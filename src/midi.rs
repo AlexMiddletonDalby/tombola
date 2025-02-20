@@ -61,7 +61,6 @@ pub fn note_on(
     midi_output: &mut Option<MidiOutputConnection>,
 ) {
     if let Some(midi_output) = midi_output {
-        println!("Midi Velocity: {}", velocity);
         let _ = midi_output.send(&[NOTE_ON_MSG, to_note_value(note, octave), velocity]);
     }
 }
