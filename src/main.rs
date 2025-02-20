@@ -7,10 +7,12 @@ fn main() {
     App::new()
         .add_plugins((DefaultPlugins, PhysicsPlugins::default()))
         .add_systems(Startup, (spawn_ball, setup_pads, setup_camera))
+        .add_systems(Update, handle_pad_collisions)
         .insert_resource(Gravity(Vec2::NEG_Y * 700.0))
         .run();
 }
 
+//Startup
 fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d);
 }
@@ -119,4 +121,22 @@ fn setup_pads(
         &mut meshes,
         &mut materials,
     );
+}
+
+fn trigger_note_from_collision(pad: &Pad) {
+    //Send midi note...
+}
+
+//Update
+fn handle_pad_collisions(mut collisions: EventReader<Collision>, pads: Query<&Pad>) {
+    for Collision(collision) in collisions.read() {
+        if collision.collision_started() {
+            if let Ok(pad) = pads.get(collision.entity1) {
+                trigger_note_from_collision(pad);
+            }
+            if let Ok(pad) = pads.get(collision.entity2) {
+                trigger_note_from_collision(pad);
+            }
+        }
+    }
 }
