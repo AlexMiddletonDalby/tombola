@@ -7,51 +7,38 @@ const NOTE_OFF_MSG: u8 = 0x80;
 #[derive(Clone, Copy)]
 pub enum Note {
     C,
+    D,
     E,
+    F,
     G,
     A,
+    B,
 }
 
-pub const C3: u8 = 0x30;
-pub const E3: u8 = 0x34;
-pub const G3: u8 = 0x37;
-pub const A3: u8 = 0x39;
-
-pub const C4: u8 = 0x3c;
-pub const E4: u8 = 0x40;
-pub const G4: u8 = 0x43;
-pub const A4: u8 = 0x45;
-
-pub const C5: u8 = 0x48;
-pub const E5: u8 = 0x4C;
-pub const G5: u8 = 0x4F;
-pub const A5: u8 = 0x51;
+const C3: u8 = 0x3C;
+const D3: u8 = 0x3E;
+const E3: u8 = 0x40;
+const F3: u8 = 0x41;
+const G3: u8 = 0x43;
+const A3: u8 = 0x45;
+const B3: u8 = 0x47;
 
 fn to_note_value(note: Note, octave: i32) -> u8 {
-    if octave <= 3 {
-        return match note {
-            Note::C => C3,
-            Note::E => E3,
-            Note::G => G3,
-            Note::A => A3,
-        };
-    }
+    const BASE_OCTAVE: i32 = 3;
+    const NOTES_PER_OCTAVE: i32 = 12;
 
-    if octave == 4 {
-        return match note {
-            Note::C => C4,
-            Note::E => E4,
-            Note::G => G4,
-            Note::A => A4,
-        };
-    }
+    let base_note = match note {
+        Note::C => C3,
+        Note::D => D3,
+        Note::E => E3,
+        Note::F => F3,
+        Note::G => G3,
+        Note::A => A3,
+        Note::B => B3,
+    };
 
-    match note {
-        Note::C => C5,
-        Note::E => E5,
-        Note::G => G5,
-        Note::A => A5,
-    }
+    let shift = octave - BASE_OCTAVE;
+    base_note + (shift * NOTES_PER_OCTAVE) as u8
 }
 
 pub fn note_on(
