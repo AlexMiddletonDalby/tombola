@@ -21,13 +21,17 @@ fn main() {
     let port: Option<&MidiOutputPort> = out_ports.get(0);
     if port.is_some() {
         println!(
-            "Acquired port {}",
+            "Acquired MIDI port: {}",
             midi_out.port_name(port.unwrap()).unwrap()
         );
 
         if let Ok(connect_result) = midi_out.connect(port.unwrap(), "test") {
             handle = Some(connect_result);
+        } else {
+            println!("Failed to connect to MIDI port");
         }
+    } else {
+        println!("Failed to acquire MIDI port");
     }
 
     App::new()
