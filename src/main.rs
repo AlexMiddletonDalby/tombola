@@ -1,11 +1,10 @@
+mod geometry;
 mod midi;
 
-use avian2d::math::PI;
 use avian2d::prelude::Restitution;
 use avian2d::prelude::*;
 
 use bevy::prelude::*;
-
 use midir::{MidiOutput, MidiOutputConnection, MidiOutputPort};
 
 #[derive(Resource)]
@@ -36,7 +35,7 @@ fn main() {
 
     App::new()
         .add_plugins((DefaultPlugins, PhysicsPlugins::default()))
-        .add_systems(Startup, (spawn_ball, setup_pads, setup_camera))
+        .add_systems(Startup, (spawn_ball, spawn_tombola, setup_camera))
         .add_systems(Update, handle_pad_collisions)
         .insert_resource(Gravity(Vec2::NEG_Y * 700.0))
         .insert_resource(Midi {
@@ -96,94 +95,69 @@ struct Pad {
     note: midi::Note,
 }
 
-fn spawn_pad_box(
-    centre: Vec2,
-    size: f32,
-    commands: &mut Commands,
+fn pad(
+    rect: Vec2,
+    transform: Transform,
+    note: midi::Note,
+    commands: &mut ChildBuilder,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<ColorMaterial>>,
 ) {
     let restitution = Restitution::new(1.0);
     let material = MeshMaterial2d(materials.add(Color::linear_rgb(0.2, 0.2, 0.2)));
-    let pad_thickness = 5.0;
+
+    commands.spawn((
+        Pad { note },
+        restitution,
+        Collider::rectangle(rect.x, rect.y),
+        Mesh2d(meshes.add(Rectangle::new(rect.x, rect.y))),
+        material.clone(),
+        transform,
+    ));
+}
+
+fn pad_hexagon(
+    centre: Vec2,
+    side_length: f32,
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+) {
+    let thickness = 5.0;
+    let rect = Vec2::new(side_length, thickness);
 
     commands
         .spawn((
             RigidBody::Kinematic,
             AngularVelocity(1.5),
-            Transform::from_xyz(centre.x, centre.y, 0.0).with_rotation(Quat::from_rotation_z(0.2)),
+            Transform::from_xyz(centre.x, centre.y, 0.0),
             Visibility::default(),
         ))
         .with_children(|commands| {
-            commands.spawn((
-                Pad {
-                    note: midi::Note::C,
-                },
-                restitution,
-                Collider::rectangle(size, pad_thickness),
-                Mesh2d(meshes.add(Rectangle::new(size, pad_thickness))),
-                material.clone(),
-                Transform::from_xyz(
-                    centre.x,
-                    centre.y + (size / 2.0) - (pad_thickness / 2.0),
-                    0.0,
-                ),
-            ));
+            let transforms = geometry::hexagon(centre, side_length);
+            let notes = vec![
+                midi::Note::C,
+                midi::Note::E,
+                midi::Note::G,
+                midi::Note::ASharp,
+                midi::Note::D,
+                midi::Note::F,
+            ];
 
-            commands.spawn((
-                Pad {
-                    note: midi::Note::E,
-                },
-                restitution,
-                Collider::rectangle(size, 5.0),
-                Mesh2d(meshes.add(Rectangle::new(size, 5.0))),
-                material.clone(),
-                Transform::from_xyz(
-                    centre.x,
-                    centre.y - (size / 2.0) + (pad_thickness / 2.0),
-                    0.0,
-                )
-                .with_rotation(Quat::from_rotation_z(-PI)),
-            ));
-
-            commands.spawn((
-                Pad {
-                    note: midi::Note::G,
-                },
-                restitution,
-                Collider::rectangle(size, 5.0),
-                Mesh2d(meshes.add(Rectangle::new(size, 5.0))),
-                material.clone(),
-                Transform::from_xyz(
-                    centre.x + (size / 2.0) - (pad_thickness / 2.0),
-                    centre.y,
-                    0.0,
-                )
-                .with_rotation(Quat::from_rotation_z(-PI / 2.0)),
-            ));
-
-            commands.spawn((
-                Pad {
-                    note: midi::Note::A,
-                },
-                restitution,
-                Collider::rectangle(size, 5.0),
-                Mesh2d(meshes.add(Rectangle::new(size, 5.0))),
-                material.clone(),
-                Transform::from_xyz(centre.x - (size / 2.0) + (pad_thickness / 2.0), 0.0, 0.0)
-                    .with_rotation(Quat::from_rotation_z(PI / 2.0)),
-            ));
+            for (index, transform) in transforms.into_iter().enumerate() {
+                pad(rect, transform, notes[index], commands, meshes, materials);
+            }
         });
 }
 
-fn setup_pads(
+fn spawn_tombola(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    spawn_pad_box(
-        Vec2::new(0.0, 0.0),
-        500.0,
+    pad_hexagon(
+        Vec2::new(10.0, 0.0),
+        300.0,
         &mut commands,
         &mut meshes,
         &mut materials,
