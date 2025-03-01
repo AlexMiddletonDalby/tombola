@@ -3,14 +3,69 @@ mod midi;
 
 use avian2d::prelude::Restitution;
 use avian2d::prelude::*;
+use std::cmp::PartialEq;
 
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 use midir::{MidiOutput, MidiOutputConnection, MidiOutputPort};
+
+//--------------------------------------------------------------------------------------------------
+//Enums
+
+#[derive(Copy, Clone, PartialEq)]
+enum Size {
+    Small,
+    Medium,
+    Large,
+}
+impl Size {
+    const fn to_octave(&self) -> i32 {
+        match self {
+            Size::Small => 4,
+            Size::Medium => 3,
+            Size::Large => 2,
+        }
+    }
+
+    const fn to_radius(&self) -> f32 {
+        match self {
+            Size::Small => 10.0,
+            Size::Medium => 15.0,
+            Size::Large => 25.0,
+        }
+    }
+
+    const fn to_color(&self) -> Color {
+        match self {
+            Size::Small => Color::linear_rgb(0.8, 0.3, 0.3),
+            Size::Medium => Color::linear_rgb(0.8, 0.7, 0.3),
+            Size::Large => Color::linear_rgb(0.1, 0.3, 0.8),
+        }
+    }
+}
+
+const SELECTOR_RADIUS: f32 = Size::Large.to_radius() + 10.0;
+
+//--------------------------------------------------------------------------------------------------
+//Resources
 
 #[derive(Resource)]
 struct Midi {
     output_handle: Option<MidiOutputConnection>,
 }
+
+#[derive(Resource, Default)]
+struct WorldMouse {
+    position: Vec2,
+}
+
+#[derive(Resource)]
+struct SelectedBall {
+    size: Size,
+}
+
+//--------------------------------------------------------------------------------------------------
+//App
 
 fn main() {
     let mut handle: Option<MidiOutputConnection> = None;
@@ -35,64 +90,63 @@ fn main() {
 
     App::new()
         .add_plugins((DefaultPlugins, PhysicsPlugins::default()))
-        .add_systems(Startup, (spawn_ball, spawn_tombola, setup_camera))
-        .add_systems(Update, handle_pad_collisions)
+        .add_systems(
+            Startup,
+            (
+                setup_camera,
+                spawn_ball_selectors.after(setup_camera),
+                spawn_tombola.after(setup_camera),
+            ),
+        )
+        .add_systems(
+            Update,
+            (
+                update_world_mouse,
+                handle_click,
+                handle_pad_collisions,
+                update_highlight,
+            ),
+        )
         .insert_resource(Gravity(Vec2::NEG_Y * 700.0))
         .insert_resource(Midi {
             output_handle: handle,
         })
+        .insert_resource(WorldMouse {
+            position: Vec2::ZERO,
+        })
+        .insert_resource(SelectedBall { size: Size::Small })
         .run();
 }
 
-//Startup
-fn setup_camera(mut commands: Commands) {
-    commands.spawn(Camera2d);
-}
+//--------------------------------------------------------------------------------------------------
+//Components
 
 #[derive(Component)]
 struct Ball {
-    octave: i32,
+    size: Size,
 }
 
-fn spawn_ball(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
-    commands.spawn((
-        Ball { octave: 2 },
-        RigidBody::Dynamic,
-        Restitution::new(1.0),
-        Collider::circle(25.0),
-        Transform::from_xyz(0.0, 0.0, 0.0),
-        Mesh2d(meshes.add(Circle::new(25.0))),
-        MeshMaterial2d(materials.add(ColorMaterial::from_color(Color::linear_rgb(0.1, 0.3, 0.8)))),
-    ));
-
-    commands.spawn((
-        Ball { octave: 3 },
-        RigidBody::Dynamic,
-        Restitution::new(1.0),
-        Collider::circle(15.0),
-        Transform::from_xyz(-100.0, 0.0, 0.0),
-        Mesh2d(meshes.add(Circle::new(15.0))),
-        MeshMaterial2d(materials.add(ColorMaterial::from_color(Color::linear_rgb(0.8, 0.7, 0.3)))),
-    ));
-
-    commands.spawn((
-        Ball { octave: 4 },
-        RigidBody::Dynamic,
-        Restitution::new(1.0),
-        Collider::circle(10.0),
-        Transform::from_xyz(100.0, 0.0, 0.0),
-        Mesh2d(meshes.add(Circle::new(10.0))),
-        MeshMaterial2d(materials.add(ColorMaterial::from_color(Color::linear_rgb(0.8, 0.3, 0.3)))),
-    ));
+#[derive(Component)]
+struct BallSelector {
+    size: Size,
 }
+
+#[derive(Component)]
+struct MainCamera;
 
 #[derive(Component)]
 struct Pad {
     note: midi::Note,
+}
+
+#[derive(Component)]
+struct Highlight;
+
+//--------------------------------------------------------------------------------------------------
+//Startup
+
+fn setup_camera(mut commands: Commands) {
+    commands.spawn((Camera2d, MainCamera));
 }
 
 fn pad(
@@ -164,7 +218,155 @@ fn spawn_tombola(
     );
 }
 
+fn spawn_ball_selector(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+    position: Vec2,
+    size: Size,
+) {
+    commands.spawn((
+        BallSelector { size },
+        Transform::from_xyz(position.x, position.y, 0.0),
+        Mesh2d(meshes.add(Circle::new(size.to_radius()))),
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(size.to_color()))),
+    ));
+}
+
+fn spawn_ball_selectors(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    window: Query<&Window, With<PrimaryWindow>>,
+) {
+    let window = window.single();
+    let spacing_from_right_edge = 50.0;
+    let x_pos = window.width() / 2.0 - spacing_from_right_edge;
+
+    let padding = 10.0;
+    commands.spawn((
+        Highlight,
+        Transform::from_xyz(x_pos, 100.0, 0.0),
+        Mesh2d(meshes.add(Circle::new(SELECTOR_RADIUS))),
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(Color::srgba(0.6, 0.6, 0.7, 0.2)))),
+    ));
+
+    spawn_ball_selector(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        Vec2::new(x_pos, 100.0),
+        Size::Small,
+    );
+
+    spawn_ball_selector(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        Vec2::new(x_pos, 0.0),
+        Size::Medium,
+    );
+
+    spawn_ball_selector(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        Vec2::new(x_pos, -100.0),
+        Size::Large,
+    );
+}
+
+//--------------------------------------------------------------------------------------------------
 //Update
+
+fn update_world_mouse(
+    mut world_mouse: ResMut<WorldMouse>,
+    window: Query<&Window, With<PrimaryWindow>>,
+    camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
+) {
+    let (camera, camera_transform) = camera.single();
+    let window = window.single();
+
+    if let Some(cursor_pos) = window.cursor_position() {
+        if let Ok(world_pos) = camera.viewport_to_world(camera_transform, cursor_pos) {
+            world_mouse.position = world_pos.origin.truncate();
+        }
+    }
+}
+
+fn get_selector_pos(selectors: &Vec<(&BallSelector, &Transform)>, selected: Size) -> Option<Vec2> {
+    if let Some((_found, transform)) = selectors
+        .iter()
+        .find(|(selector, _)| selector.size == selected)
+    {
+        return Some(transform.translation.truncate());
+    }
+
+    None
+}
+
+fn update_highlight(
+    mut highlight: Query<&mut Transform, With<Highlight>>,
+    selectors: Query<(&BallSelector, &Transform), Without<Highlight>>,
+    selected_ball: Res<SelectedBall>,
+) {
+    if let Ok(mut highlight) = highlight.get_single_mut() {
+        if let Some(pos) = get_selector_pos(&selectors.iter().collect(), selected_ball.size) {
+            highlight.translation.x = pos.x;
+            highlight.translation.y = pos.y;
+        }
+    }
+}
+
+fn pick_selector(selectors: Query<(&BallSelector, &Transform)>, pos: Vec2) -> Option<Size> {
+    for (selector, transform) in selectors.iter() {
+        let centre = transform.translation.truncate();
+
+        let rect = Rect::new(
+            centre.x + SELECTOR_RADIUS,
+            centre.y + SELECTOR_RADIUS,
+            centre.x - SELECTOR_RADIUS,
+            centre.y - SELECTOR_RADIUS,
+        );
+
+        if rect.contains(pos) {
+            return Some(selector.size);
+        }
+    }
+
+    None
+}
+
+fn handle_click(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut selected_ball: ResMut<SelectedBall>,
+    world_mouse: Res<WorldMouse>,
+    buttons: Res<ButtonInput<MouseButton>>,
+    selectors: Query<(&BallSelector, &Transform)>,
+) {
+    if buttons.just_pressed(MouseButton::Left) {
+        if let Some(selector) = pick_selector(selectors, world_mouse.position) {
+            selected_ball.size = selector
+        } else {
+            commands.spawn((
+                Ball {
+                    size: selected_ball.size,
+                },
+                Transform::from_xyz(world_mouse.position.x, world_mouse.position.y, 0.0),
+                RigidBody::Dynamic,
+                Restitution::new(1.0),
+                Collider::circle(selected_ball.size.to_radius()),
+                Mesh2d(meshes.add(Circle::new(selected_ball.size.to_radius()))),
+                MeshMaterial2d(
+                    materials.add(ColorMaterial::from_color(selected_ball.size.to_color())),
+                ),
+            ));
+        }
+    }
+}
+
 fn handle_pad_collision(
     collision: &Contacts,
     pad: &Pad,
@@ -175,7 +377,7 @@ fn handle_pad_collision(
     if collision.collision_started() {
         midi::note_on(
             pad.note,
-            ball.octave,
+            ball.size.to_octave(),
             midi::to_velocity(ball_velocity.length()),
             &mut midi_output,
         );
