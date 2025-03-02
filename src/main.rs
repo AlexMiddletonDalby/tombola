@@ -357,6 +357,7 @@ fn handle_click(
     world_mouse: Res<WorldMouse>,
     buttons: Res<ButtonInput<MouseButton>>,
     selectors: Query<(&BallSelector, &Transform)>,
+    balls: Query<Entity, With<Ball>>,
 ) {
     if buttons.just_pressed(MouseButton::Left) {
         if let Some(selector) = pick_selector(selectors, world_mouse.position) {
@@ -375,6 +376,10 @@ fn handle_click(
                     materials.add(ColorMaterial::from_color(selected_ball.size.to_color())),
                 ),
             ));
+        }
+    } else if buttons.just_pressed(MouseButton::Right) {
+        for ball in balls.iter() {
+            commands.entity(ball).despawn();
         }
     }
 }
