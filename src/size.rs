@@ -25,9 +25,9 @@ impl Size {
 
     pub const fn to_color(&self) -> Color {
         match self {
-            Size::Small => Color::linear_rgb(0.8, 0.3, 0.3),
-            Size::Medium => Color::linear_rgb(0.8, 0.7, 0.3),
-            Size::Large => Color::linear_rgb(0.1, 0.3, 0.8),
+            Size::Small => Color::linear_rgb(1.8, 0.3, 0.3),
+            Size::Medium => Color::linear_rgb(1.5, 1.3, 0.3),
+            Size::Large => Color::linear_rgb(0.2, 0.2, 2.3),
         }
     }
 }

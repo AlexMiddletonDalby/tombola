@@ -63,7 +63,7 @@ impl HighlightBundle {
             transform: Transform::from_xyz(position.x, position.y, 0.0),
             mesh: Mesh2d(meshes.add(Circle::new(BallSelector::hitbox_size()))),
             material: MeshMaterial2d(
-                materials.add(ColorMaterial::from_color(Color::srgba(0.6, 0.6, 0.7, 0.2))),
+                materials.add(ColorMaterial::from_color(Color::srgba(0.3, 0.3, 0.4, 0.2))),
             ),
         }
     }

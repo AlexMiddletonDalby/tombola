@@ -6,6 +6,7 @@ mod size;
 mod ui;
 
 use avian2d::prelude::*;
+use bevy::core_pipeline::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use midir::{MidiOutput, MidiOutputConnection, MidiOutputPort};
@@ -72,6 +73,7 @@ fn main() {
                 update_highlight.after(update_selector_positions),
             ),
         )
+        .insert_resource(ClearColor(Color::linear_rgb(0., 0., 0.)))
         .insert_resource(Gravity(Vec2::NEG_Y * 700.0))
         .insert_resource(Midi {
             output_handle: handle,
@@ -90,7 +92,15 @@ fn main() {
 struct MainCamera;
 
 fn setup_camera(mut commands: Commands) {
-    commands.spawn((Camera2d, MainCamera));
+    commands.spawn((
+        Camera {
+            hdr: true,
+            ..default()
+        },
+        Camera2d,
+        Bloom::OLD_SCHOOL,
+        MainCamera,
+    ));
 }
 
 fn spawn_tombola(

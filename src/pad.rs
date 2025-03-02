@@ -10,11 +10,11 @@ pub struct Pad {
 
 impl Pad {
     pub fn default_color() -> Color {
-        Color::linear_rgb(0.1, 0.1, 0.1)
+        Color::linear_rgb(0.3, 0.3, 0.3)
     }
 
     pub fn hit_color() -> Color {
-        Color::linear_rgb(1.0, 1.0, 1.0)
+        Color::linear_rgb(5.0, 5.0, 30.0)
     }
 }
 
