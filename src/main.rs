@@ -1,54 +1,19 @@
+mod ball;
 mod geometry;
 mod midi;
+mod pad;
+mod size;
+mod ui;
 
-use avian2d::prelude::Restitution;
 use avian2d::prelude::*;
-use std::cmp::PartialEq;
-
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use midir::{MidiOutput, MidiOutputConnection, MidiOutputPort};
 
-//--------------------------------------------------------------------------------------------------
-//Enums
-
-#[derive(Copy, Clone, PartialEq)]
-enum Size {
-    Small,
-    Medium,
-    Large,
-}
-impl Size {
-    const fn to_octave(&self) -> i32 {
-        match self {
-            Size::Small => 4,
-            Size::Medium => 3,
-            Size::Large => 2,
-        }
-    }
-
-    const fn to_radius(&self) -> f32 {
-        match self {
-            Size::Small => 10.0,
-            Size::Medium => 15.0,
-            Size::Large => 25.0,
-        }
-    }
-
-    const fn to_color(&self) -> Color {
-        match self {
-            Size::Small => Color::linear_rgb(0.8, 0.3, 0.3),
-            Size::Medium => Color::linear_rgb(0.8, 0.7, 0.3),
-            Size::Large => Color::linear_rgb(0.1, 0.3, 0.8),
-        }
-    }
-}
-
-const SELECTOR_RADIUS: f32 = Size::Large.to_radius() + 10.0;
-const SELECTOR_SPACING: f32 = 50.0;
-
-//--------------------------------------------------------------------------------------------------
-//Resources
+use ball::{Ball, BallBundle};
+use pad::{Pad, PadBundle};
+use size::Size;
+use ui::{BallSelector, BallSelectorBundle, Highlight, HighlightBundle};
 
 #[derive(Resource)]
 struct Midi {
@@ -64,9 +29,6 @@ struct WorldMouse {
 struct SelectedBall {
     size: Size,
 }
-
-//--------------------------------------------------------------------------------------------------
-//App
 
 fn main() {
     let mut handle: Option<MidiOutputConnection> = None;
@@ -94,9 +56,9 @@ fn main() {
         .add_systems(
             Startup,
             (
+                spawn_tombola,
                 setup_camera,
                 spawn_ball_selectors.after(setup_camera),
-                spawn_tombola.after(setup_camera),
             ),
         )
         .add_systems(
@@ -104,7 +66,7 @@ fn main() {
             (
                 update_world_mouse,
                 handle_click,
-                handle_pad_collisions,
+                handle_collisions,
                 fade_pads,
                 update_selector_positions,
                 update_highlight.after(update_selector_positions),
@@ -122,90 +84,35 @@ fn main() {
 }
 
 //--------------------------------------------------------------------------------------------------
-//Components
-
-#[derive(Component)]
-struct Ball {
-    size: Size,
-}
-
-#[derive(Component)]
-struct BallSelector {
-    size: Size,
-}
+//Startup
 
 #[derive(Component)]
 struct MainCamera;
-
-#[derive(Component)]
-struct Pad {
-    note: midi::Note,
-    material_handle: MeshMaterial2d<ColorMaterial>,
-}
-
-impl Pad {
-    fn default_color() -> Color {
-        Color::linear_rgb(0.1, 0.1, 0.1)
-    }
-
-    fn hit_color() -> Color {
-        Color::linear_rgb(1.0, 1.0, 1.0)
-    }
-}
-
-#[derive(Component)]
-struct Highlight;
-
-//--------------------------------------------------------------------------------------------------
-//Startup
 
 fn setup_camera(mut commands: Commands) {
     commands.spawn((Camera2d, MainCamera));
 }
 
-fn pad(
-    rect: Vec2,
-    transform: Transform,
-    note: midi::Note,
-    commands: &mut ChildBuilder,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
+fn spawn_tombola(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    let restitution = Restitution::new(1.0);
-    let material = MeshMaterial2d(materials.add(Pad::default_color()));
+    const SIDE_LENGTH: f32 = 300.0;
+    const THICKNESS: f32 = 5.0;
 
-    commands.spawn((
-        Pad {
-            note,
-            material_handle: material.clone(),
-        },
-        restitution,
-        Collider::rectangle(rect.x, rect.y),
-        Mesh2d(meshes.add(Rectangle::new(rect.x, rect.y))),
-        material.clone(),
-        transform,
-    ));
-}
-
-fn pad_hexagon(
-    centre: Vec2,
-    side_length: f32,
-    commands: &mut Commands,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
-) {
-    let thickness = 5.0;
-    let rect = Vec2::new(side_length, thickness);
+    let size = Vec2::new(SIDE_LENGTH, THICKNESS);
+    let position = Vec2::new(0.0, 0.0);
 
     commands
         .spawn((
             RigidBody::Kinematic,
             AngularVelocity(1.5),
-            Transform::from_xyz(centre.x, centre.y, 0.0),
+            Transform::from_xyz(position.x, position.y, 0.0),
             Visibility::default(),
         ))
         .with_children(|commands| {
-            let transforms = geometry::hexagon(centre, side_length);
+            let transforms = geometry::hexagon(position, SIDE_LENGTH);
             let notes = vec![
                 midi::Note::C,
                 midi::Note::E,
@@ -216,38 +123,21 @@ fn pad_hexagon(
             ];
 
             for (index, transform) in transforms.into_iter().enumerate() {
-                pad(rect, transform, notes[index], commands, meshes, materials);
+                commands.spawn(PadBundle::new(
+                    size,
+                    transform,
+                    notes[index],
+                    &mut meshes,
+                    &mut materials,
+                ));
             }
         });
 }
 
-fn spawn_tombola(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
-    pad_hexagon(
-        Vec2::new(10.0, 0.0),
-        300.0,
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-    );
-}
+fn get_ball_selector_x(window: &Window) -> f32 {
+    const SPACING: f32 = 50.0;
 
-fn spawn_ball_selector(
-    commands: &mut Commands,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
-    position: Vec2,
-    size: Size,
-) {
-    commands.spawn((
-        BallSelector { size },
-        Transform::from_xyz(position.x, position.y, 1.0),
-        Mesh2d(meshes.add(Circle::new(size.to_radius()))),
-        MeshMaterial2d(materials.add(ColorMaterial::from_color(size.to_color()))),
-    ));
+    window.width() / 2.0 - SPACING
 }
 
 fn spawn_ball_selectors(
@@ -256,39 +146,34 @@ fn spawn_ball_selectors(
     mut materials: ResMut<Assets<ColorMaterial>>,
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
-    let window = window.single();
-    let x_pos = window.width() / 2.0 - SELECTOR_SPACING;
+    let x_pos = get_ball_selector_x(window.single());
 
-    commands.spawn((
-        Highlight,
-        Transform::from_xyz(x_pos, 100.0, 0.0),
-        Mesh2d(meshes.add(Circle::new(SELECTOR_RADIUS))),
-        MeshMaterial2d(materials.add(ColorMaterial::from_color(Color::srgba(0.6, 0.6, 0.7, 0.2)))),
+    commands.spawn(HighlightBundle::new(
+        Vec2::new(x_pos, 100.0),
+        &mut meshes,
+        &mut materials,
     ));
 
-    spawn_ball_selector(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        Vec2::new(x_pos, 100.0),
+    commands.spawn(BallSelectorBundle::new(
         Size::Small,
-    );
-
-    spawn_ball_selector(
-        &mut commands,
+        Vec2::new(x_pos, 100.0),
         &mut meshes,
         &mut materials,
-        Vec2::new(x_pos, 0.0),
+    ));
+
+    commands.spawn(BallSelectorBundle::new(
         Size::Medium,
-    );
-
-    spawn_ball_selector(
-        &mut commands,
+        Vec2::new(x_pos, 0.0),
         &mut meshes,
         &mut materials,
-        Vec2::new(x_pos, -100.0),
+    ));
+
+    commands.spawn(BallSelectorBundle::new(
         Size::Large,
-    );
+        Vec2::new(x_pos, -100.0),
+        &mut meshes,
+        &mut materials,
+    ));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -313,15 +198,17 @@ fn update_selector_positions(
     mut selectors: Query<&mut Transform, With<BallSelector>>,
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
-    let window = window.single();
-    let x_pos = window.width() / 2.0 - SELECTOR_SPACING;
+    let x_pos = get_ball_selector_x(window.single());
 
     for mut selector in selectors.iter_mut() {
         selector.translation.x = x_pos;
     }
 }
 
-fn get_selector_pos(selectors: &Vec<(&BallSelector, &Transform)>, selected: Size) -> Option<Vec2> {
+fn find_selector_position(
+    selectors: &Vec<(&BallSelector, &Transform)>,
+    selected: Size,
+) -> Option<Vec2> {
     if let Some((_found, transform)) = selectors
         .iter()
         .find(|(selector, _)| selector.size == selected)
@@ -338,7 +225,7 @@ fn update_highlight(
     selected_ball: Res<SelectedBall>,
 ) {
     if let Ok(mut highlight) = highlight.get_single_mut() {
-        if let Some(pos) = get_selector_pos(&selectors.iter().collect(), selected_ball.size) {
+        if let Some(pos) = find_selector_position(&selectors.iter().collect(), selected_ball.size) {
             highlight.translation.x = pos.x;
             highlight.translation.y = pos.y;
         }
@@ -350,10 +237,10 @@ fn pick_selector(selectors: Query<(&BallSelector, &Transform)>, pos: Vec2) -> Op
         let centre = transform.translation.truncate();
 
         let rect = Rect::new(
-            centre.x + SELECTOR_RADIUS,
-            centre.y + SELECTOR_RADIUS,
-            centre.x - SELECTOR_RADIUS,
-            centre.y - SELECTOR_RADIUS,
+            centre.x + BallSelector::hitbox_size(),
+            centre.y + BallSelector::hitbox_size(),
+            centre.x - BallSelector::hitbox_size(),
+            centre.y - BallSelector::hitbox_size(),
         );
 
         if rect.contains(pos) {
@@ -378,18 +265,11 @@ fn handle_click(
         if let Some(selector) = pick_selector(selectors, world_mouse.position) {
             selected_ball.size = selector
         } else {
-            commands.spawn((
-                Ball {
-                    size: selected_ball.size,
-                },
-                Transform::from_xyz(world_mouse.position.x, world_mouse.position.y, 0.0),
-                RigidBody::Dynamic,
-                Restitution::new(1.0),
-                Collider::circle(selected_ball.size.to_radius()),
-                Mesh2d(meshes.add(Circle::new(selected_ball.size.to_radius()))),
-                MeshMaterial2d(
-                    materials.add(ColorMaterial::from_color(selected_ball.size.to_color())),
-                ),
+            commands.spawn(BallBundle::new(
+                world_mouse.position,
+                selected_ball.size,
+                &mut meshes,
+                &mut materials,
             ));
         }
     } else if buttons.just_pressed(MouseButton::Right) {
@@ -399,7 +279,7 @@ fn handle_click(
     }
 }
 
-fn handle_pad_collision(
+fn collide(
     collision: &Contacts,
     pad: &Pad,
     ball: &Ball,
@@ -415,7 +295,7 @@ fn handle_pad_collision(
             &mut midi_output,
         );
 
-        if let Some(material) = materials.get_mut(pad.material_handle.0.id()) {
+        if let Some(material) = materials.get_mut(pad.material.0.id()) {
             material.color = Pad::hit_color();
         }
     }
@@ -424,7 +304,7 @@ fn handle_pad_collision(
     }
 }
 
-fn handle_pad_collisions(
+fn handle_collisions(
     mut collisions: EventReader<Collision>,
     pads: Query<&Pad>,
     balls: Query<(&Ball, &LinearVelocity)>,
@@ -434,7 +314,7 @@ fn handle_pad_collisions(
     for Collision(collision) in collisions.read() {
         if let Ok(pad) = pads.get(collision.entity1) {
             if let Ok((ball, velocity)) = balls.get(collision.entity2) {
-                handle_pad_collision(
+                collide(
                     collision,
                     pad,
                     ball,
@@ -446,7 +326,7 @@ fn handle_pad_collisions(
         }
         if let Ok(pad) = pads.get(collision.entity2) {
             if let Ok((ball, velocity)) = balls.get(collision.entity1) {
-                handle_pad_collision(
+                collide(
                     collision,
                     pad,
                     ball,
@@ -468,7 +348,7 @@ fn fade_pads(
     let amount = FADE_SPEED * time.delta_secs();
 
     for pad in pads.iter_mut() {
-        if let Some(material) = materials.get_mut(pad.material_handle.0.id()) {
+        if let Some(material) = materials.get_mut(pad.material.0.id()) {
             material.color = material.color.mix(&Pad::default_color(), amount);
         }
     }
