@@ -45,6 +45,7 @@ impl Size {
 }
 
 const SELECTOR_RADIUS: f32 = Size::Large.to_radius() + 10.0;
+const SELECTOR_SPACING: f32 = 50.0;
 
 //--------------------------------------------------------------------------------------------------
 //Resources
@@ -104,7 +105,8 @@ fn main() {
                 update_world_mouse,
                 handle_click,
                 handle_pad_collisions,
-                update_highlight,
+                update_selector_positions,
+                update_highlight.after(update_selector_positions),
             ),
         )
         .insert_resource(Gravity(Vec2::NEG_Y * 700.0))
@@ -240,10 +242,8 @@ fn spawn_ball_selectors(
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
     let window = window.single();
-    let spacing_from_right_edge = 50.0;
-    let x_pos = window.width() / 2.0 - spacing_from_right_edge;
+    let x_pos = window.width() / 2.0 - SELECTOR_SPACING;
 
-    let padding = 10.0;
     commands.spawn((
         Highlight,
         Transform::from_xyz(x_pos, 100.0, 0.0),
@@ -291,6 +291,18 @@ fn update_world_mouse(
         if let Ok(world_pos) = camera.viewport_to_world(camera_transform, cursor_pos) {
             world_mouse.position = world_pos.origin.truncate();
         }
+    }
+}
+
+fn update_selector_positions(
+    mut selectors: Query<&mut Transform, With<BallSelector>>,
+    window: Query<&Window, With<PrimaryWindow>>,
+) {
+    let window = window.single();
+    let x_pos = window.width() / 2.0 - SELECTOR_SPACING;
+
+    for mut selector in selectors.iter_mut() {
+        selector.translation.x = x_pos;
     }
 }
 
