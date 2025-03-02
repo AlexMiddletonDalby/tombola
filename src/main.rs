@@ -105,6 +105,7 @@ fn main() {
                 update_world_mouse,
                 handle_click,
                 handle_pad_collisions,
+                fade_pads,
                 update_selector_positions,
                 update_highlight.after(update_selector_positions),
             ),
@@ -139,6 +140,17 @@ struct MainCamera;
 #[derive(Component)]
 struct Pad {
     note: midi::Note,
+    material_handle: MeshMaterial2d<ColorMaterial>,
+}
+
+impl Pad {
+    fn default_color() -> Color {
+        Color::linear_rgb(0.1, 0.1, 0.1)
+    }
+
+    fn hit_color() -> Color {
+        Color::linear_rgb(1.0, 1.0, 1.0)
+    }
 }
 
 #[derive(Component)]
@@ -160,10 +172,13 @@ fn pad(
     materials: &mut ResMut<Assets<ColorMaterial>>,
 ) {
     let restitution = Restitution::new(1.0);
-    let material = MeshMaterial2d(materials.add(Color::linear_rgb(0.2, 0.2, 0.2)));
+    let material = MeshMaterial2d(materials.add(Pad::default_color()));
 
     commands.spawn((
-        Pad { note },
+        Pad {
+            note,
+            material_handle: material.clone(),
+        },
         restitution,
         Collider::rectangle(rect.x, rect.y),
         Mesh2d(meshes.add(Rectangle::new(rect.x, rect.y))),
@@ -390,6 +405,7 @@ fn handle_pad_collision(
     ball: &Ball,
     ball_velocity: &LinearVelocity,
     mut midi_output: &mut Option<MidiOutputConnection>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
 ) {
     if collision.collision_started() {
         midi::note_on(
@@ -398,6 +414,10 @@ fn handle_pad_collision(
             midi::to_velocity(ball_velocity.length()),
             &mut midi_output,
         );
+
+        if let Some(material) = materials.get_mut(pad.material_handle.0.id()) {
+            material.color = Pad::hit_color();
+        }
     }
     if collision.collision_stopped() {
         midi::note_off(pad.note, 4, &mut midi_output);
@@ -409,17 +429,47 @@ fn handle_pad_collisions(
     pads: Query<&Pad>,
     balls: Query<(&Ball, &LinearVelocity)>,
     mut midi: ResMut<Midi>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     for Collision(collision) in collisions.read() {
         if let Ok(pad) = pads.get(collision.entity1) {
             if let Ok((ball, velocity)) = balls.get(collision.entity2) {
-                handle_pad_collision(collision, pad, ball, velocity, &mut midi.output_handle);
+                handle_pad_collision(
+                    collision,
+                    pad,
+                    ball,
+                    velocity,
+                    &mut midi.output_handle,
+                    &mut materials,
+                );
             }
         }
         if let Ok(pad) = pads.get(collision.entity2) {
             if let Ok((ball, velocity)) = balls.get(collision.entity1) {
-                handle_pad_collision(collision, pad, ball, velocity, &mut midi.output_handle);
+                handle_pad_collision(
+                    collision,
+                    pad,
+                    ball,
+                    velocity,
+                    &mut midi.output_handle,
+                    &mut materials,
+                );
             }
+        }
+    }
+}
+
+fn fade_pads(
+    mut pads: Query<&mut Pad>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    time: Res<Time>,
+) {
+    const FADE_SPEED: f32 = 5.0;
+    let amount = FADE_SPEED * time.delta_secs();
+
+    for pad in pads.iter_mut() {
+        if let Some(material) = materials.get_mut(pad.material_handle.0.id()) {
+            material.color = material.color.mix(&Pad::default_color(), amount);
         }
     }
 }
