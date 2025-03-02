@@ -229,7 +229,7 @@ fn spawn_ball_selector(
 ) {
     commands.spawn((
         BallSelector { size },
-        Transform::from_xyz(position.x, position.y, 0.0),
+        Transform::from_xyz(position.x, position.y, 1.0),
         Mesh2d(meshes.add(Circle::new(size.to_radius()))),
         MeshMaterial2d(materials.add(ColorMaterial::from_color(size.to_color()))),
     ));
