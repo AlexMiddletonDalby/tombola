@@ -1,10 +1,12 @@
 use crate::midi;
 use avian2d::prelude::*;
 use bevy::prelude::*;
+use std::collections::HashMap;
 
 #[derive(Component)]
 pub struct Pad {
     pub note: midi::Note,
+    pub playing_notes: HashMap<i32, Timer>,
     pub material: MeshMaterial2d<ColorMaterial>,
 }
 
@@ -42,6 +44,7 @@ impl PadBundle {
             marker: Pad {
                 note,
                 material: material.clone(),
+                playing_notes: HashMap::new(),
             },
             transform,
             restitution: Restitution::new(1.0),

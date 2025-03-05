@@ -10,6 +10,7 @@ use bevy::core_pipeline::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use midir::{MidiOutput, MidiOutputConnection, MidiOutputPort};
+use std::time::Duration;
 
 use ball::{Ball, BallBundle};
 use pad::{Pad, PadBundle};
@@ -68,6 +69,7 @@ fn main() {
                 update_world_mouse,
                 handle_click,
                 handle_collisions,
+                note_off_pads,
                 fade_pads,
                 update_selector_positions,
                 update_highlight.after(update_selector_positions),
@@ -289,15 +291,31 @@ fn handle_click(
     }
 }
 
+fn to_note_duration(speed: f32) -> Duration {
+    const MAX_SPEED: f32 = 750.0;
+    const MIN_SPEED: f32 = 50.0;
+
+    let scaled0to1 = (clamp(speed, MIN_SPEED, MAX_SPEED) - MIN_SPEED) / (MAX_SPEED - MIN_SPEED);
+
+    const MAX_DURATION: i32 = 400;
+    let scaled = MAX_DURATION as f32 * scaled0to1;
+
+    Duration::from_millis(scaled as u64)
+}
+
 fn collide(
     collision: &Contacts,
-    pad: &Pad,
+    pad: &mut Pad,
     ball: &Ball,
     ball_velocity: &LinearVelocity,
     mut midi_output: &mut Option<MidiOutputConnection>,
     materials: &mut ResMut<Assets<ColorMaterial>>,
 ) {
     if collision.collision_started() {
+        if pad.playing_notes.contains_key(&ball.size.to_octave()) {
+            midi::note_off(pad.note, ball.size.to_octave(), &mut midi_output);
+        }
+
         midi::note_on(
             pad.note,
             ball.size.to_octave(),
@@ -305,28 +323,30 @@ fn collide(
             &mut midi_output,
         );
 
+        pad.playing_notes.insert(
+            ball.size.to_octave(),
+            Timer::new(to_note_duration(ball_velocity.length()), TimerMode::Once),
+        );
+
         if let Some(material) = materials.get_mut(pad.material.0.id()) {
             material.color = Pad::hit_color();
         }
-    }
-    if collision.collision_stopped() {
-        midi::note_off(pad.note, 4, &mut midi_output);
     }
 }
 
 fn handle_collisions(
     mut collisions: EventReader<Collision>,
-    pads: Query<&Pad>,
+    mut pads: Query<&mut Pad>,
     balls: Query<(&Ball, &LinearVelocity)>,
     mut midi: ResMut<Midi>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     for Collision(collision) in collisions.read() {
-        if let Ok(pad) = pads.get(collision.entity1) {
+        if let Ok(mut pad) = pads.get_mut(collision.entity1) {
             if let Ok((ball, velocity)) = balls.get(collision.entity2) {
                 collide(
                     collision,
-                    pad,
+                    &mut pad,
                     ball,
                     velocity,
                     &mut midi.output_handle,
@@ -334,11 +354,11 @@ fn handle_collisions(
                 );
             }
         }
-        if let Ok(pad) = pads.get(collision.entity2) {
+        if let Ok(mut pad) = pads.get_mut(collision.entity2) {
             if let Ok((ball, velocity)) = balls.get(collision.entity1) {
                 collide(
                     collision,
-                    pad,
+                    &mut pad,
                     ball,
                     velocity,
                     &mut midi.output_handle,
@@ -346,6 +366,25 @@ fn handle_collisions(
                 );
             }
         }
+    }
+}
+
+fn note_off_pads(mut pads: Query<&mut Pad>, time: Res<Time>, mut midi: ResMut<Midi>) {
+    for mut pad in pads.iter_mut() {
+        let note = pad.note.clone();
+
+        for (_, mut timer) in pad.playing_notes.iter_mut() {
+            timer.tick(time.delta());
+        }
+
+        pad.playing_notes.retain(|octave, timer| {
+            if timer.just_finished() {
+                midi::note_off(note, octave.clone(), &mut midi.output_handle);
+                return false;
+            }
+
+            true
+        });
     }
 }
 
