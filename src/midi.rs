@@ -53,7 +53,7 @@ fn to_note_value(note: Note, octave: i32) -> u8 {
     };
 
     let shift = octave - BASE_OCTAVE;
-    base_note + (shift * NOTES_PER_OCTAVE) as u8
+    (base_note as i32 + (shift * NOTES_PER_OCTAVE)) as u8
 }
 
 pub fn note_on(
