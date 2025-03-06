@@ -3,6 +3,7 @@ use midir::MidiOutputConnection;
 
 const NOTE_ON_MSG: u8 = 0x90;
 const NOTE_OFF_MSG: u8 = 0x80;
+const CC: u8 = 0xB0;
 
 #[derive(Clone, Copy)]
 pub enum Note {
@@ -32,6 +33,8 @@ const G_SHARP3: u8 = 0x44;
 const A3: u8 = 0x45;
 const A_SHARP3: u8 = 0x46;
 const B3: u8 = 0x47;
+
+const PANIC: u8 = 0x7B;
 
 fn to_note_value(note: Note, octave: i32) -> u8 {
     const BASE_OCTAVE: i32 = 3;
@@ -72,6 +75,12 @@ pub fn note_off(note: Note, octave: i32, midi_output: &mut Option<MidiOutputConn
 
     if let Some(midi_output) = midi_output {
         let _ = midi_output.send(&[NOTE_OFF_MSG, to_note_value(note, octave), VELOCITY]);
+    }
+}
+
+pub fn panic(midi_output: &mut Option<MidiOutputConnection>) {
+    if let Some(midi_output) = midi_output {
+        let _ = midi_output.send(&[CC, PANIC, 0]);
     }
 }
 

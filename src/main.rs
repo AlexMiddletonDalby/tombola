@@ -5,21 +5,27 @@ mod pad;
 mod size;
 mod ui;
 
+use avian2d::parry::na::clamp;
 use avian2d::prelude::*;
+use ball::{Ball, BallBundle};
 use bevy::core_pipeline::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use midir::{MidiOutput, MidiOutputConnection, MidiOutputPort};
-use std::time::Duration;
-
-use ball::{Ball, BallBundle};
 use pad::{Pad, PadBundle};
 use size::Size;
+use std::time::Duration;
 use ui::{BallSelector, BallSelectorBundle, Highlight, HighlightBundle};
 
 #[derive(Resource)]
 struct Midi {
     output_handle: Option<MidiOutputConnection>,
+}
+
+impl Drop for Midi {
+    fn drop(&mut self) {
+        midi::panic(&mut self.output_handle);
+    }
 }
 
 #[derive(Resource, Default)]
@@ -373,7 +379,7 @@ fn note_off_pads(mut pads: Query<&mut Pad>, time: Res<Time>, mut midi: ResMut<Mi
     for mut pad in pads.iter_mut() {
         let note = pad.note.clone();
 
-        for (_, mut timer) in pad.playing_notes.iter_mut() {
+        for (_, timer) in pad.playing_notes.iter_mut() {
             timer.tick(time.delta());
         }
 
