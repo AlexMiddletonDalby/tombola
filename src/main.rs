@@ -79,6 +79,7 @@ fn main() {
                 fade_pads,
                 update_selector_positions,
                 update_highlight.after(update_selector_positions),
+                clean_up_balls,
             ),
         )
         .insert_resource(ClearColor(Color::linear_rgb(0., 0., 0.)))
@@ -405,6 +406,24 @@ fn fade_pads(
     for pad in pads.iter_mut() {
         if let Some(material) = materials.get_mut(pad.material.0.id()) {
             material.color = material.color.mix(&Pad::default_color(), amount);
+        }
+    }
+}
+
+fn clean_up_balls(
+    mut commands: Commands,
+    mut balls: Query<(Entity, &Transform), With<Ball>>,
+    window: Query<&Window, With<PrimaryWindow>>,
+) {
+    let window = window.single();
+    let half_width = window.width() / 2.0;
+    let half_height = window.height() / 2.0;
+
+    let rect = Rect::new(-half_width, -half_height, half_width, half_height);
+
+    for (ball, transform) in balls.iter_mut() {
+        if !rect.contains(transform.translation.truncate()) {
+            commands.entity(ball).despawn();
         }
     }
 }
