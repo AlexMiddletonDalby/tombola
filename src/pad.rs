@@ -35,6 +35,7 @@ impl PadBundle {
         size: Vec2,
         transform: Transform,
         note: midi::Note,
+        bounciness: f32,
         meshes: &mut ResMut<Assets<Mesh>>,
         materials: &mut ResMut<Assets<ColorMaterial>>,
     ) -> Self {
@@ -47,7 +48,7 @@ impl PadBundle {
                 playing_notes: HashMap::new(),
             },
             transform,
-            restitution: Restitution::new(1.0),
+            restitution: Restitution::new(bounciness),
             collider: Collider::rectangle(size.x, size.y),
             mesh: Mesh2d(meshes.add(Rectangle::new(size.x, size.y))),
             material: material.clone(),

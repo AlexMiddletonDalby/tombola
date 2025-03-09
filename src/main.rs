@@ -2,19 +2,22 @@ mod ball;
 mod geometry;
 mod midi;
 mod pad;
+mod settings;
 mod size;
 mod ui;
 
-use avian2d::parry::na::clamp;
 use avian2d::prelude::*;
-use ball::{Ball, BallBundle};
 use bevy::core_pipeline::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
+use bevy_egui::{EguiContexts, EguiPlugin};
 use midir::{MidiOutput, MidiOutputConnection, MidiOutputPort};
-use pad::{Pad, PadBundle};
-use size::Size;
 use std::time::Duration;
+
+use ball::{Ball, BallBundle};
+use pad::{Pad, PadBundle};
+use settings::Settings;
+use size::Size;
 use ui::{BallSelector, BallSelectorBundle, Highlight, HighlightBundle};
 
 #[derive(Resource)]
@@ -60,7 +63,7 @@ fn main() {
     }
 
     App::new()
-        .add_plugins((DefaultPlugins, PhysicsPlugins::default()))
+        .add_plugins((DefaultPlugins, PhysicsPlugins::default(), EguiPlugin))
         .add_systems(
             Startup,
             (
@@ -80,6 +83,8 @@ fn main() {
                 update_selector_positions,
                 update_highlight.after(update_selector_positions),
                 clean_up_balls,
+                update_tombola_spin,
+                update_bounciness,
             ),
         )
         .insert_resource(ClearColor(Color::linear_rgb(0., 0., 0.)))
@@ -91,6 +96,7 @@ fn main() {
             position: Vec2::ZERO,
         })
         .insert_resource(SelectedBall { size: Size::Small })
+        .insert_resource(Settings::default())
         .run();
 }
 
@@ -112,10 +118,14 @@ fn setup_camera(mut commands: Commands) {
     ));
 }
 
+#[derive(Component)]
+struct Tombola;
+
 fn spawn_tombola(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    settings: Res<Settings>,
 ) {
     const SIDE_LENGTH: f32 = 300.0;
     const THICKNESS: f32 = 5.0;
@@ -125,8 +135,9 @@ fn spawn_tombola(
 
     commands
         .spawn((
+            Tombola {},
             RigidBody::Kinematic,
-            AngularVelocity(1.5),
+            AngularVelocity(-settings.world.tombola_spin),
             Transform::from_xyz(position.x, position.y, 0.0),
             Visibility::default(),
         ))
@@ -143,9 +154,10 @@ fn spawn_tombola(
 
             for (index, transform) in transforms.into_iter().enumerate() {
                 commands.spawn(PadBundle::new(
-                    size,
+                    Vec2::new(size.x + (THICKNESS / 2.0), size.y),
                     transform,
                     notes[index],
+                    settings.world.bounciness,
                     &mut meshes,
                     &mut materials,
                 ));
@@ -224,50 +236,19 @@ fn update_selector_positions(
     }
 }
 
-fn find_selector_position(
-    selectors: &Vec<(&BallSelector, &Transform)>,
-    selected: Size,
-) -> Option<Vec2> {
-    if let Some((_found, transform)) = selectors
-        .iter()
-        .find(|(selector, _)| selector.size == selected)
-    {
-        return Some(transform.translation.truncate());
-    }
-
-    None
-}
-
 fn update_highlight(
     mut highlight: Query<&mut Transform, With<Highlight>>,
     selectors: Query<(&BallSelector, &Transform), Without<Highlight>>,
     selected_ball: Res<SelectedBall>,
 ) {
     if let Ok(mut highlight) = highlight.get_single_mut() {
-        if let Some(pos) = find_selector_position(&selectors.iter().collect(), selected_ball.size) {
+        if let Some(pos) =
+            ui::find_selector_position(&selectors.iter().collect(), selected_ball.size)
+        {
             highlight.translation.x = pos.x;
             highlight.translation.y = pos.y;
         }
     }
-}
-
-fn pick_selector(selectors: Query<(&BallSelector, &Transform)>, pos: Vec2) -> Option<Size> {
-    for (selector, transform) in selectors.iter() {
-        let centre = transform.translation.truncate();
-
-        let rect = Rect::new(
-            centre.x + BallSelector::hitbox_size(),
-            centre.y + BallSelector::hitbox_size(),
-            centre.x - BallSelector::hitbox_size(),
-            centre.y - BallSelector::hitbox_size(),
-        );
-
-        if rect.contains(pos) {
-            return Some(selector.size);
-        }
-    }
-
-    None
 }
 
 fn handle_click(
@@ -275,18 +256,27 @@ fn handle_click(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut selected_ball: ResMut<SelectedBall>,
+    mut settings: ResMut<Settings>,
     world_mouse: Res<WorldMouse>,
     buttons: Res<ButtonInput<MouseButton>>,
     selectors: Query<(&BallSelector, &Transform)>,
     balls: Query<Entity, With<Ball>>,
+    egui: EguiContexts,
 ) {
+    let handled = ui::show_settings_menu(egui, settings.as_mut());
+    if handled {
+        return;
+    }
+
     if buttons.just_pressed(MouseButton::Left) {
-        if let Some(selector) = pick_selector(selectors, world_mouse.position) {
+        if let Some(selector) = ui::pick_selector(&selectors.iter().collect(), world_mouse.position)
+        {
             selected_ball.size = selector
         } else {
             commands.spawn(BallBundle::new(
                 world_mouse.position,
                 selected_ball.size,
+                settings.world.bounciness,
                 &mut meshes,
                 &mut materials,
             ));
@@ -298,16 +288,19 @@ fn handle_click(
     }
 }
 
-fn to_note_duration(speed: f32) -> Duration {
-    const MAX_SPEED: f32 = 750.0;
-    const MIN_SPEED: f32 = 50.0;
+fn update_tombola_spin(
+    mut spin: Query<&mut AngularVelocity, With<Tombola>>,
+    settings: Res<Settings>,
+) {
+    if let Ok(mut tombola) = spin.get_single_mut() {
+        tombola.0 = -settings.world.tombola_spin;
+    }
+}
 
-    let scaled0to1 = (clamp(speed, MIN_SPEED, MAX_SPEED) - MIN_SPEED) / (MAX_SPEED - MIN_SPEED);
-
-    const MAX_DURATION: i32 = 400;
-    let scaled = MAX_DURATION as f32 * scaled0to1;
-
-    Duration::from_millis(scaled as u64)
+fn update_bounciness(mut bouncy_things: Query<&mut Restitution>, settings: Res<Settings>) {
+    for mut thing in bouncy_things.iter_mut() {
+        thing.coefficient = settings.world.bounciness;
+    }
 }
 
 fn collide(
@@ -316,7 +309,8 @@ fn collide(
     ball: &Ball,
     ball_velocity: &LinearVelocity,
     mut midi_output: &mut Option<MidiOutputConnection>,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
+    materials: &mut Assets<ColorMaterial>,
+    settings: &Settings,
 ) {
     if collision.collision_started() {
         if pad.playing_notes.contains_key(&ball.size.to_octave()) {
@@ -326,13 +320,24 @@ fn collide(
         midi::note_on(
             pad.note,
             ball.size.to_octave(),
-            midi::to_velocity(ball_velocity.length()),
+            if settings.midi.fixed_note_velocity.enabled {
+                settings.midi.fixed_note_velocity.value
+            } else {
+                midi::to_velocity(ball_velocity.length())
+            },
             &mut midi_output,
         );
 
         pad.playing_notes.insert(
             ball.size.to_octave(),
-            Timer::new(to_note_duration(ball_velocity.length()), TimerMode::Once),
+            Timer::new(
+                if settings.midi.fixed_note_length.enabled {
+                    Duration::from_millis(settings.midi.fixed_note_length.value)
+                } else {
+                    midi::to_note_duration(ball_velocity.length())
+                },
+                TimerMode::Once,
+            ),
         );
 
         if let Some(material) = materials.get_mut(pad.material.0.id()) {
@@ -347,6 +352,7 @@ fn handle_collisions(
     balls: Query<(&Ball, &LinearVelocity)>,
     mut midi: ResMut<Midi>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    settings: Res<Settings>,
 ) {
     for Collision(collision) in collisions.read() {
         if let Ok(mut pad) = pads.get_mut(collision.entity1) {
@@ -358,6 +364,7 @@ fn handle_collisions(
                     velocity,
                     &mut midi.output_handle,
                     &mut materials,
+                    &settings,
                 );
             }
         }
@@ -370,6 +377,7 @@ fn handle_collisions(
                     velocity,
                     &mut midi.output_handle,
                     &mut materials,
+                    &settings,
                 );
             }
         }

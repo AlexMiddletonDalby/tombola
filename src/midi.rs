@@ -1,5 +1,6 @@
 use avian2d::parry::na::clamp;
 use midir::MidiOutputConnection;
+use std::time::Duration;
 
 const NOTE_ON_MSG: u8 = 0x90;
 const NOTE_OFF_MSG: u8 = 0x80;
@@ -94,4 +95,16 @@ pub fn to_velocity(speed: f32) -> u8 {
     let scaled = MAX_MIDI_VEL as f32 * scaled0to1;
 
     scaled as u8
+}
+
+pub fn to_note_duration(speed: f32) -> Duration {
+    const MAX_SPEED: f32 = 750.0;
+    const MIN_SPEED: f32 = 50.0;
+
+    let scaled0to1 = (clamp(speed, MIN_SPEED, MAX_SPEED) - MIN_SPEED) / (MAX_SPEED - MIN_SPEED);
+
+    const MAX_DURATION: i32 = 400;
+    let scaled = MAX_DURATION as f32 * scaled0to1;
+
+    Duration::from_millis(scaled as u64)
 }
