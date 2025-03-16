@@ -8,6 +8,8 @@ bevy = "0.15.1"
 avian2d = "0.2.1"
 bevy_egui = "0.33.0"
 midir = "0.10.1"
+strum = "0.27.1"
+strum_macros = "0.27.1"
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]

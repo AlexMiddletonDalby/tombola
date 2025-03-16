@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 #[derive(Component)]
 pub struct Pad {
+    pub index: usize,
     pub note: midi::Note,
     pub playing_notes: HashMap<i32, Timer>,
     pub material: MeshMaterial2d<ColorMaterial>,
@@ -32,6 +33,7 @@ pub struct PadBundle {
 
 impl PadBundle {
     pub fn new(
+        index: usize,
         size: Vec2,
         transform: Transform,
         note: midi::Note,
@@ -43,6 +45,7 @@ impl PadBundle {
 
         PadBundle {
             marker: Pad {
+                index,
                 note,
                 material: material.clone(),
                 playing_notes: HashMap::new(),

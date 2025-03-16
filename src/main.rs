@@ -90,6 +90,7 @@ fn main() {
                 update_highlight.after(update_selector_positions),
                 clean_up_balls,
                 update_tombola_spin,
+                update_tombola_notes,
                 update_bounciness,
                 update_gravity,
             ),
@@ -150,20 +151,13 @@ fn spawn_tombola(
         ))
         .with_children(|commands| {
             let transforms = geometry::hexagon(position, SIDE_LENGTH);
-            let notes = vec![
-                midi::Note::C,
-                midi::Note::E,
-                midi::Note::G,
-                midi::Note::ASharp,
-                midi::Note::D,
-                midi::Note::F,
-            ];
 
             for (index, transform) in transforms.into_iter().enumerate() {
                 commands.spawn(PadBundle::new(
+                    index,
                     Vec2::new(size.x + (THICKNESS / 2.0), size.y),
                     transform,
-                    notes[index],
+                    settings.midi.tombola_notes[index],
                     settings.world.bounciness,
                     &mut meshes,
                     &mut materials,
@@ -301,6 +295,12 @@ fn update_tombola_spin(
 ) {
     if let Ok(mut tombola) = spin.get_single_mut() {
         tombola.0 = -settings.world.tombola_spin;
+    }
+}
+
+fn update_tombola_notes(mut pads: Query<&mut Pad>, settings: Res<Settings>) {
+    for mut pad in pads.iter_mut() {
+        pad.note = settings.midi.tombola_notes[pad.index];
     }
 }
 

@@ -1,11 +1,13 @@
 use crate::settings::Settings;
 use crate::size::Size;
 
+use crate::midi;
 use bevy::asset::Assets;
 use bevy::color::Color;
 use bevy::math::{Rect, Vec2};
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
+use strum::IntoEnumIterator;
 
 #[derive(Component)]
 pub struct BallSelector {
@@ -123,6 +125,20 @@ pub fn show_settings_menu(mut egui: EguiContexts, settings: &mut Settings) -> bo
                 );
             });
             ui.collapsing("MIDI", |ui| {
+                ui.label("Notes");
+                for (index, current_note) in &mut settings.midi.tombola_notes.iter_mut().enumerate()
+                {
+                    egui::ComboBox::from_id_salt(index)
+                        .selected_text(current_note.to_string())
+                        .show_ui(ui, |ui| {
+                            for note in midi::Note::iter() {
+                                ui.selectable_value(current_note, note, note.to_string());
+                            }
+                        });
+                }
+
+                ui.add_space(10.0);
+
                 ui.checkbox(
                     &mut settings.midi.fixed_note_velocity.enabled,
                     "Fixed Note Velocity",

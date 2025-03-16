@@ -1,3 +1,4 @@
+use crate::midi;
 use bevy::prelude::Resource;
 
 pub struct World {
@@ -17,6 +18,7 @@ pub struct FixedNoteLength {
 }
 
 pub struct Midi {
+    pub tombola_notes: Vec<midi::Note>,
     pub fixed_note_velocity: FixedNoteVelocity,
     pub fixed_note_length: FixedNoteLength,
 }
@@ -36,6 +38,14 @@ impl Default for Settings {
                 gravity: 1.0,
             },
             midi: Midi {
+                tombola_notes: vec![
+                    midi::Note::C,
+                    midi::Note::E,
+                    midi::Note::G,
+                    midi::Note::ASharp,
+                    midi::Note::D,
+                    midi::Note::F,
+                ],
                 fixed_note_velocity: FixedNoteVelocity {
                     enabled: false,
                     value: 64,

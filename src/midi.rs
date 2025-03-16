@@ -1,26 +1,11 @@
 use avian2d::parry::na::clamp;
 use midir::MidiOutputConnection;
 use std::time::Duration;
+use strum_macros::EnumIter;
 
 const NOTE_ON_MSG: u8 = 0x90;
 const NOTE_OFF_MSG: u8 = 0x80;
 const CC: u8 = 0xB0;
-
-#[derive(Clone, Copy)]
-pub enum Note {
-    C,
-    CSharp,
-    D,
-    DSharp,
-    E,
-    F,
-    FSharp,
-    G,
-    GSharp,
-    A,
-    ASharp,
-    B,
-}
 
 const C3: u8 = 0x3C;
 const C_SHARP3: u8 = 0x3D;
@@ -37,27 +22,62 @@ const B3: u8 = 0x47;
 
 const PANIC: u8 = 0x7B;
 
-fn to_note_value(note: Note, octave: i32) -> u8 {
-    const BASE_OCTAVE: i32 = 3;
-    const NOTES_PER_OCTAVE: i32 = 12;
+#[derive(Clone, Copy, PartialEq, EnumIter)]
+pub enum Note {
+    C,
+    CSharp,
+    D,
+    DSharp,
+    E,
+    F,
+    FSharp,
+    G,
+    GSharp,
+    A,
+    ASharp,
+    B,
+}
 
-    let base_note = match note {
-        Note::C => C3,
-        Note::CSharp => C_SHARP3,
-        Note::D => D3,
-        Note::DSharp => D_SHARP3,
-        Note::E => E3,
-        Note::F => F3,
-        Note::FSharp => F_SHARP3,
-        Note::G => G3,
-        Note::GSharp => G_SHARP3,
-        Note::A => A3,
-        Note::ASharp => A_SHARP3,
-        Note::B => B3,
-    };
+impl Note {
+    fn to_value(&self, octave: i32) -> u8 {
+        const BASE_OCTAVE: i32 = 3;
+        const NOTES_PER_OCTAVE: i32 = 12;
 
-    let shift = octave - BASE_OCTAVE;
-    (base_note as i32 + (shift * NOTES_PER_OCTAVE)) as u8
+        let base_note = match self {
+            Note::C => C3,
+            Note::CSharp => C_SHARP3,
+            Note::D => D3,
+            Note::DSharp => D_SHARP3,
+            Note::E => E3,
+            Note::F => F3,
+            Note::FSharp => F_SHARP3,
+            Note::G => G3,
+            Note::GSharp => G_SHARP3,
+            Note::A => A3,
+            Note::ASharp => A_SHARP3,
+            Note::B => B3,
+        };
+
+        let shift = octave - BASE_OCTAVE;
+        (base_note as i32 + (shift * NOTES_PER_OCTAVE)) as u8
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Note::C => "C".to_owned(),
+            Note::CSharp => "C#".to_owned(),
+            Note::D => "D".to_owned(),
+            Note::DSharp => "Eb".to_owned(),
+            Note::E => "E".to_owned(),
+            Note::F => "F".to_owned(),
+            Note::FSharp => "F#".to_owned(),
+            Note::G => "G".to_owned(),
+            Note::GSharp => "G#".to_owned(),
+            Note::A => "A".to_owned(),
+            Note::ASharp => "Bb".to_owned(),
+            Note::B => "B".to_owned(),
+        }
+    }
 }
 
 pub fn note_on(
@@ -67,7 +87,7 @@ pub fn note_on(
     midi_output: &mut Option<MidiOutputConnection>,
 ) {
     if let Some(midi_output) = midi_output {
-        let _ = midi_output.send(&[NOTE_ON_MSG, to_note_value(note, octave), velocity]);
+        let _ = midi_output.send(&[NOTE_ON_MSG, note.to_value(octave), velocity]);
     }
 }
 
@@ -75,7 +95,7 @@ pub fn note_off(note: Note, octave: i32, midi_output: &mut Option<MidiOutputConn
     const VELOCITY: u8 = 0x7F;
 
     if let Some(midi_output) = midi_output {
-        let _ = midi_output.send(&[NOTE_OFF_MSG, to_note_value(note, octave), VELOCITY]);
+        let _ = midi_output.send(&[NOTE_OFF_MSG, note.to_value(octave), VELOCITY]);
     }
 }
 
