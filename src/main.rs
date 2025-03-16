@@ -41,6 +41,10 @@ struct SelectedBall {
     size: Size,
 }
 
+fn get_gravity(gravity_factor: f32) -> Vec2 {
+    Vec2::NEG_Y * 700.0 * gravity_factor
+}
+
 fn main() {
     let mut handle: Option<MidiOutputConnection> = None;
 
@@ -61,6 +65,8 @@ fn main() {
     } else {
         println!("Failed to acquire MIDI port");
     }
+
+    let settings = Settings::default();
 
     App::new()
         .add_plugins((DefaultPlugins, PhysicsPlugins::default(), EguiPlugin))
@@ -85,10 +91,11 @@ fn main() {
                 clean_up_balls,
                 update_tombola_spin,
                 update_bounciness,
+                update_gravity,
             ),
         )
         .insert_resource(ClearColor(Color::linear_rgb(0., 0., 0.)))
-        .insert_resource(Gravity(Vec2::NEG_Y * 700.0))
+        .insert_resource(Gravity(get_gravity(settings.world.gravity)))
         .insert_resource(Midi {
             output_handle: handle,
         })
@@ -96,7 +103,7 @@ fn main() {
             position: Vec2::ZERO,
         })
         .insert_resource(SelectedBall { size: Size::Small })
-        .insert_resource(Settings::default())
+        .insert_resource(settings)
         .run();
 }
 
@@ -301,6 +308,10 @@ fn update_bounciness(mut bouncy_things: Query<&mut Restitution>, settings: Res<S
     for mut thing in bouncy_things.iter_mut() {
         thing.coefficient = settings.world.bounciness;
     }
+}
+
+fn update_gravity(mut gravity: ResMut<Gravity>, settings: Res<Settings>) {
+    gravity.0 = get_gravity(settings.world.gravity);
 }
 
 fn collide(

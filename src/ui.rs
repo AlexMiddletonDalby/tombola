@@ -116,6 +116,11 @@ pub fn show_settings_menu(mut egui: EguiContexts, settings: &mut Settings) -> bo
                         .text("Bounciness")
                         .fixed_decimals(2),
                 );
+                ui.add(
+                    egui::Slider::new(&mut settings.world.gravity, 0.0..=1.5)
+                        .text("Gravity")
+                        .fixed_decimals(2),
+                );
             });
             ui.collapsing("MIDI", |ui| {
                 ui.checkbox(

@@ -3,6 +3,7 @@ use bevy::prelude::Resource;
 pub struct World {
     pub tombola_spin: f32,
     pub bounciness: f32,
+    pub gravity: f32,
 }
 
 pub struct FixedNoteVelocity {
@@ -32,6 +33,7 @@ impl Default for Settings {
             world: World {
                 tombola_spin: 1.5,
                 bounciness: 1.0,
+                gravity: 1.0,
             },
             midi: Midi {
                 fixed_note_velocity: FixedNoteVelocity {
