@@ -123,6 +123,13 @@ pub fn show_settings_menu(mut egui: EguiContexts, settings: &mut Settings) -> bo
                         .text("Gravity")
                         .fixed_decimals(2),
                 );
+                ui.checkbox(&mut settings.world.max_bounces.enabled, "Max Bounces");
+                if settings.world.max_bounces.enabled {
+                    ui.add(egui::Slider::new(
+                        &mut settings.world.max_bounces.limit,
+                        1..=10,
+                    ));
+                }
             });
             ui.collapsing("MIDI", |ui| {
                 ui.label("Notes");

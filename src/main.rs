@@ -317,7 +317,7 @@ fn update_gravity(mut gravity: ResMut<Gravity>, settings: Res<Settings>) {
 fn collide(
     collision: &Contacts,
     pad: &mut Pad,
-    ball: &Ball,
+    ball: &mut Ball,
     ball_velocity: &LinearVelocity,
     mut midi_output: &mut Option<MidiOutputConnection>,
     materials: &mut Assets<ColorMaterial>,
@@ -354,24 +354,26 @@ fn collide(
         if let Some(material) = materials.get_mut(pad.material.0.id()) {
             material.color = Pad::hit_color();
         }
+
+        ball.bounces += 1;
     }
 }
 
 fn handle_collisions(
     mut collisions: EventReader<Collision>,
     mut pads: Query<&mut Pad>,
-    balls: Query<(&Ball, &LinearVelocity)>,
+    mut balls: Query<(&mut Ball, &LinearVelocity)>,
     mut midi: ResMut<Midi>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     settings: Res<Settings>,
 ) {
     for Collision(collision) in collisions.read() {
         if let Ok(mut pad) = pads.get_mut(collision.entity1) {
-            if let Ok((ball, velocity)) = balls.get(collision.entity2) {
+            if let Ok((mut ball, velocity)) = balls.get_mut(collision.entity2) {
                 collide(
                     collision,
                     &mut pad,
-                    ball,
+                    &mut ball,
                     velocity,
                     &mut midi.output_handle,
                     &mut materials,
@@ -380,11 +382,11 @@ fn handle_collisions(
             }
         }
         if let Ok(mut pad) = pads.get_mut(collision.entity2) {
-            if let Ok((ball, velocity)) = balls.get(collision.entity1) {
+            if let Ok((mut ball, velocity)) = balls.get_mut(collision.entity1) {
                 collide(
                     collision,
                     &mut pad,
-                    ball,
+                    &mut ball,
                     velocity,
                     &mut midi.output_handle,
                     &mut materials,
@@ -431,18 +433,21 @@ fn fade_pads(
 
 fn clean_up_balls(
     mut commands: Commands,
-    mut balls: Query<(Entity, &Transform), With<Ball>>,
+    mut balls: Query<(Entity, &Ball, &Transform)>,
     window: Query<&Window, With<PrimaryWindow>>,
+    settings: Res<Settings>,
 ) {
     let window = window.single();
     let half_width = window.width() / 2.0;
     let half_height = window.height() / 2.0;
-
     let rect = Rect::new(-half_width, -half_height, half_width, half_height);
 
-    for (ball, transform) in balls.iter_mut() {
-        if !rect.contains(transform.translation.truncate()) {
-            commands.entity(ball).despawn();
+    for (entity, ball, transform) in balls.iter_mut() {
+        if !rect.contains(transform.translation.truncate())
+            || (settings.world.max_bounces.enabled
+                && ball.bounces >= settings.world.max_bounces.limit)
+        {
+            commands.entity(entity).despawn();
         }
     }
 }

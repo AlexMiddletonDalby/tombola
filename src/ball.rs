@@ -5,6 +5,7 @@ use bevy::prelude::*;
 #[derive(Component)]
 pub struct Ball {
     pub size: Size,
+    pub bounces: usize,
 }
 
 #[derive(Bundle)]
@@ -27,7 +28,7 @@ impl BallBundle {
         materials: &mut ResMut<Assets<ColorMaterial>>,
     ) -> Self {
         BallBundle {
-            marker: Ball { size },
+            marker: Ball { size, bounces: 0 },
             transform: Transform::from_xyz(position.x, position.y, 0.0),
             body: RigidBody::Dynamic,
             restitution: Restitution::new(bounciness),

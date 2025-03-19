@@ -1,10 +1,16 @@
 use crate::midi;
 use bevy::prelude::Resource;
 
+pub struct BounceLimit {
+    pub enabled: bool,
+    pub limit: usize,
+}
+
 pub struct World {
     pub tombola_spin: f32,
     pub bounciness: f32,
     pub gravity: f32,
+    pub max_bounces: BounceLimit,
 }
 
 pub struct FixedNoteVelocity {
@@ -36,6 +42,10 @@ impl Default for Settings {
                 tombola_spin: 1.5,
                 bounciness: 1.0,
                 gravity: 1.0,
+                max_bounces: BounceLimit {
+                    enabled: false,
+                    limit: 5,
+                },
             },
             midi: Midi {
                 tombola_notes: vec![
