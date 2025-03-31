@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::{EguiContexts, EguiPlugin};
 use midir::{MidiOutput, MidiOutputConnection, MidiOutputPort};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use ball::{Ball, BallBundle};
 use pad::{Pad, PadBundle};
@@ -261,7 +261,7 @@ fn handle_click(
     world_mouse: Res<WorldMouse>,
     buttons: Res<ButtonInput<MouseButton>>,
     selectors: Query<(&BallSelector, &Transform)>,
-    balls: Query<Entity, With<Ball>>,
+    balls: Query<(Entity, &Ball)>,
     egui: EguiContexts,
 ) {
     let handled = ui::show_settings_menu(egui, settings.as_mut());
@@ -283,8 +283,8 @@ fn handle_click(
             ));
         }
     } else if buttons.just_pressed(MouseButton::Right) {
-        for ball in balls.iter() {
-            commands.entity(ball).despawn();
+        for (entity, _ball) in balls.iter() {
+            commands.entity(entity).despawn();
         }
     }
 }
@@ -431,6 +431,36 @@ fn fade_pads(
     }
 }
 
+fn oldest_ball(balls: &Vec<(Entity, SystemTime)>) -> Option<Entity> {
+    balls
+        .iter()
+        .max_by(|a, b| {
+            let (_, a_spawn_time) = a;
+            let (_, b_spawn_time) = b;
+
+            b_spawn_time.cmp(&a_spawn_time)
+        })
+        .map(|(entity, _)| *entity)
+}
+
+fn despawn_oldest_balls(
+    num_to_remove: usize,
+    balls: &Query<(Entity, &Ball, &Transform)>,
+    mut commands: Commands,
+) {
+    let mut remaining_balls: Vec<(Entity, SystemTime)> = vec![];
+    for (entity, ball, _) in balls.iter() {
+        remaining_balls.push((entity, ball.spawn_time));
+    }
+
+    for _ in 0..num_to_remove {
+        if let Some(oldest) = oldest_ball(&remaining_balls) {
+            commands.entity(oldest).despawn();
+            remaining_balls.retain(|(entity, _)| entity != &oldest);
+        }
+    }
+}
+
 fn clean_up_balls(
     mut commands: Commands,
     mut balls: Query<(Entity, &Ball, &Transform)>,
@@ -449,5 +479,13 @@ fn clean_up_balls(
         {
             commands.entity(entity).despawn();
         }
+    }
+
+    if settings.world.max_balls.enabled && balls.iter().count() > settings.world.max_balls.limit {
+        despawn_oldest_balls(
+            balls.iter().count() - settings.world.max_balls.limit,
+            &balls,
+            commands,
+        );
     }
 }

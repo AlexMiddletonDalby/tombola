@@ -123,7 +123,17 @@ pub fn show_settings_menu(mut egui: EguiContexts, settings: &mut Settings) -> bo
                         .text("Gravity")
                         .fixed_decimals(2),
                 );
-                ui.checkbox(&mut settings.world.max_bounces.enabled, "Max Bounces");
+                ui.checkbox(&mut settings.world.max_balls.enabled, "Max Balls");
+                if settings.world.max_balls.enabled {
+                    ui.add(egui::Slider::new(
+                        &mut settings.world.max_balls.limit,
+                        1..=20,
+                    ));
+                }
+                ui.checkbox(
+                    &mut settings.world.max_bounces.enabled,
+                    "Max Bounces per Ball",
+                );
                 if settings.world.max_bounces.enabled {
                     ui.add(egui::Slider::new(
                         &mut settings.world.max_bounces.limit,

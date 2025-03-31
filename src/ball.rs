@@ -1,11 +1,13 @@
 use crate::size::Size;
 use avian2d::prelude::*;
 use bevy::prelude::*;
+use std::time::SystemTime;
 
 #[derive(Component)]
 pub struct Ball {
     pub size: Size,
     pub bounces: usize,
+    pub spawn_time: SystemTime,
 }
 
 #[derive(Bundle)]
@@ -28,7 +30,11 @@ impl BallBundle {
         materials: &mut ResMut<Assets<ColorMaterial>>,
     ) -> Self {
         BallBundle {
-            marker: Ball { size, bounces: 0 },
+            marker: Ball {
+                size,
+                bounces: 0,
+                spawn_time: SystemTime::now(),
+            },
             transform: Transform::from_xyz(position.x, position.y, 0.0),
             body: RigidBody::Dynamic,
             restitution: Restitution::new(bounciness),
