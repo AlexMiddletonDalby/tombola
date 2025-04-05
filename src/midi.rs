@@ -1,4 +1,4 @@
-use avian2d::parry::na::clamp;
+use bevy::prelude::Event;
 use midir::MidiOutputConnection;
 use std::time::Duration;
 use strum_macros::EnumIter;
@@ -80,22 +80,33 @@ impl Note {
     }
 }
 
-pub fn note_on(
-    note: Note,
-    octave: i32,
-    velocity: u8,
-    midi_output: &mut Option<MidiOutputConnection>,
-) {
-    if let Some(midi_output) = midi_output {
-        let _ = midi_output.send(&[NOTE_ON_MSG, note.to_value(octave), velocity]);
-    }
+#[derive(Event)]
+pub enum MidiOutputEvent {
+    NoteOn {
+        note: Note,
+        octave: i32,
+        velocity: u8,
+    },
+    NoteOff {
+        note: Note,
+        octave: i32,
+    },
 }
 
-pub fn note_off(note: Note, octave: i32, midi_output: &mut Option<MidiOutputConnection>) {
-    const VELOCITY: u8 = 0x7F;
-
-    if let Some(midi_output) = midi_output {
-        let _ = midi_output.send(&[NOTE_OFF_MSG, note.to_value(octave), VELOCITY]);
+pub fn send_event(event: &MidiOutputEvent, connection: &mut Option<MidiOutputConnection>) {
+    if let Some(output) = connection {
+        match event {
+            MidiOutputEvent::NoteOn {
+                note,
+                octave,
+                velocity,
+            } => {
+                let _ = output.send(&[NOTE_ON_MSG, note.to_value(*octave), *velocity]);
+            }
+            MidiOutputEvent::NoteOff { note, octave } => {
+                let _ = output.send(&[NOTE_OFF_MSG, note.to_value(*octave), 0x7F]);
+            }
+        }
     }
 }
 
@@ -109,7 +120,7 @@ pub fn to_velocity(speed: f32) -> u8 {
     const MAX_SPEED: f32 = 750.0;
     const MIN_SPEED: f32 = 50.0;
 
-    let scaled0to1 = (clamp(speed, MIN_SPEED, MAX_SPEED) - MIN_SPEED) / (MAX_SPEED - MIN_SPEED);
+    let scaled0to1 = (speed.clamp(MIN_SPEED, MAX_SPEED) - MIN_SPEED) / (MAX_SPEED - MIN_SPEED);
 
     const MAX_MIDI_VEL: u8 = 0x7F;
     let scaled = MAX_MIDI_VEL as f32 * scaled0to1;
@@ -121,7 +132,7 @@ pub fn to_note_duration(speed: f32) -> Duration {
     const MAX_SPEED: f32 = 750.0;
     const MIN_SPEED: f32 = 50.0;
 
-    let scaled0to1 = (clamp(speed, MIN_SPEED, MAX_SPEED) - MIN_SPEED) / (MAX_SPEED - MIN_SPEED);
+    let scaled0to1 = (speed.clamp(MIN_SPEED, MAX_SPEED) - MIN_SPEED) / (MAX_SPEED - MIN_SPEED);
 
     const MAX_DURATION: i32 = 400;
     let scaled = MAX_DURATION as f32 * scaled0to1;

@@ -7,17 +7,17 @@ mod size;
 mod ui;
 
 use avian2d::prelude::*;
+use ball::{Ball, BallBundle};
 use bevy::core_pipeline::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::{EguiContexts, EguiPlugin};
+use midi::MidiOutputEvent;
 use midir::{MidiOutput, MidiOutputConnection, MidiOutputPort};
-use std::time::{Duration, SystemTime};
-
-use ball::{Ball, BallBundle};
 use pad::{Pad, PadBundle};
 use settings::Settings;
 use size::Size;
+use std::time::{Duration, SystemTime};
 use ui::{BallSelector, BallSelectorBundle, Highlight, HighlightBundle};
 
 #[derive(Resource)]
@@ -70,6 +70,7 @@ fn main() {
 
     App::new()
         .add_plugins((DefaultPlugins, PhysicsPlugins::default(), EguiPlugin))
+        .add_event::<MidiOutputEvent>()
         .add_systems(
             Startup,
             (
@@ -89,6 +90,7 @@ fn main() {
                 update_selector_positions,
                 update_highlight.after(update_selector_positions),
                 clean_up_balls,
+                process_midi_output_events,
                 update_tombola_spin,
                 update_tombola_notes,
                 update_bounciness,
@@ -319,25 +321,27 @@ fn collide(
     pad: &mut Pad,
     ball: &mut Ball,
     ball_velocity: &LinearVelocity,
-    mut midi_output: &mut Option<MidiOutputConnection>,
+    midi: &mut EventWriter<MidiOutputEvent>,
     materials: &mut Assets<ColorMaterial>,
     settings: &Settings,
 ) {
     if collision.collision_started() {
         if pad.playing_notes.contains_key(&ball.size.to_octave()) {
-            midi::note_off(pad.note, ball.size.to_octave(), &mut midi_output);
+            midi.send(MidiOutputEvent::NoteOff {
+                note: pad.note,
+                octave: ball.size.to_octave(),
+            });
         }
 
-        midi::note_on(
-            pad.note,
-            ball.size.to_octave(),
-            if settings.midi.fixed_note_velocity.enabled {
+        midi.send(MidiOutputEvent::NoteOn {
+            note: pad.note,
+            octave: ball.size.to_octave(),
+            velocity: if settings.midi.fixed_note_velocity.enabled {
                 settings.midi.fixed_note_velocity.value
             } else {
                 midi::to_velocity(ball_velocity.length())
             },
-            &mut midi_output,
-        );
+        });
 
         pad.playing_notes.insert(
             ball.size.to_octave(),
@@ -361,9 +365,9 @@ fn collide(
 
 fn handle_collisions(
     mut collisions: EventReader<Collision>,
+    mut midi: EventWriter<MidiOutputEvent>,
     mut pads: Query<&mut Pad>,
     mut balls: Query<(&mut Ball, &LinearVelocity)>,
-    mut midi: ResMut<Midi>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     settings: Res<Settings>,
 ) {
@@ -375,7 +379,7 @@ fn handle_collisions(
                     &mut pad,
                     &mut ball,
                     velocity,
-                    &mut midi.output_handle,
+                    &mut midi,
                     &mut materials,
                     &settings,
                 );
@@ -388,7 +392,7 @@ fn handle_collisions(
                     &mut pad,
                     &mut ball,
                     velocity,
-                    &mut midi.output_handle,
+                    &mut midi,
                     &mut materials,
                     &settings,
                 );
@@ -397,7 +401,11 @@ fn handle_collisions(
     }
 }
 
-fn note_off_pads(mut pads: Query<&mut Pad>, time: Res<Time>, mut midi: ResMut<Midi>) {
+fn note_off_pads(
+    mut pads: Query<&mut Pad>,
+    time: Res<Time>,
+    mut midi: EventWriter<MidiOutputEvent>,
+) {
     for mut pad in pads.iter_mut() {
         let note = pad.note.clone();
 
@@ -407,7 +415,10 @@ fn note_off_pads(mut pads: Query<&mut Pad>, time: Res<Time>, mut midi: ResMut<Mi
 
         pad.playing_notes.retain(|octave, timer| {
             if timer.just_finished() {
-                midi::note_off(note, octave.clone(), &mut midi.output_handle);
+                midi.send(MidiOutputEvent::NoteOff {
+                    note,
+                    octave: octave.clone(),
+                });
                 return false;
             }
 
@@ -487,5 +498,11 @@ fn clean_up_balls(
             &balls,
             commands,
         );
+    }
+}
+
+fn process_midi_output_events(mut events: EventReader<MidiOutputEvent>, mut midi: ResMut<Midi>) {
+    for event in events.read() {
+        midi::send_event(&event, &mut midi.output_handle)
     }
 }
