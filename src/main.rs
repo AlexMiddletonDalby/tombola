@@ -12,24 +12,12 @@ use bevy::core_pipeline::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::{EguiContexts, EguiPlugin};
-use midi::MidiOutputEvent;
-use midir::{MidiOutput, MidiOutputConnection, MidiOutputPort};
+use midi::{MidiOutputEvent, MidiPlugin};
 use pad::{Pad, PadBundle};
 use settings::Settings;
 use size::Size;
 use std::time::{Duration, SystemTime};
 use ui::{BallSelector, BallSelectorBundle, Highlight, HighlightBundle};
-
-#[derive(Resource)]
-struct Midi {
-    output_handle: Option<MidiOutputConnection>,
-}
-
-impl Drop for Midi {
-    fn drop(&mut self) {
-        midi::panic(&mut self.output_handle);
-    }
-}
 
 #[derive(Resource, Default)]
 struct WorldMouse {
@@ -46,31 +34,15 @@ fn get_gravity(gravity_factor: f32) -> Vec2 {
 }
 
 fn main() {
-    let mut handle: Option<MidiOutputConnection> = None;
-
-    let midi_out = MidiOutput::new("My Test Output").unwrap();
-    let out_ports = midi_out.ports();
-    let port: Option<&MidiOutputPort> = out_ports.get(0);
-    if port.is_some() {
-        println!(
-            "Acquired MIDI port: {}",
-            midi_out.port_name(port.unwrap()).unwrap()
-        );
-
-        if let Ok(connect_result) = midi_out.connect(port.unwrap(), "test") {
-            handle = Some(connect_result);
-        } else {
-            println!("Failed to connect to MIDI port");
-        }
-    } else {
-        println!("Failed to acquire MIDI port");
-    }
-
     let settings = Settings::default();
 
     App::new()
-        .add_plugins((DefaultPlugins, PhysicsPlugins::default(), EguiPlugin))
-        .add_event::<MidiOutputEvent>()
+        .add_plugins((
+            DefaultPlugins,
+            PhysicsPlugins::default(),
+            EguiPlugin,
+            MidiPlugin,
+        ))
         .add_systems(
             Startup,
             (
@@ -90,7 +62,6 @@ fn main() {
                 update_selector_positions,
                 update_highlight.after(update_selector_positions),
                 clean_up_balls,
-                process_midi_output_events,
                 update_tombola_spin,
                 update_tombola_notes,
                 update_bounciness,
@@ -99,9 +70,6 @@ fn main() {
         )
         .insert_resource(ClearColor(Color::linear_rgb(0., 0., 0.)))
         .insert_resource(Gravity(get_gravity(settings.world.gravity)))
-        .insert_resource(Midi {
-            output_handle: handle,
-        })
         .insert_resource(WorldMouse {
             position: Vec2::ZERO,
         })
@@ -498,11 +466,5 @@ fn clean_up_balls(
             &balls,
             commands,
         );
-    }
-}
-
-fn process_midi_output_events(mut events: EventReader<MidiOutputEvent>, mut midi: ResMut<Midi>) {
-    for event in events.read() {
-        midi::send_event(&event, &mut midi.output_handle)
     }
 }

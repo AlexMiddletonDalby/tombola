@@ -1,11 +1,12 @@
-use bevy::prelude::Event;
-use midir::MidiOutputConnection;
+use bevy::prelude::*;
+use midir::{MidiOutput, MidiOutputConnection, MidiOutputPort};
 use std::time::Duration;
 use strum_macros::EnumIter;
 
 const NOTE_ON_MSG: u8 = 0x90;
 const NOTE_OFF_MSG: u8 = 0x80;
 const CC: u8 = 0xB0;
+const PANIC: u8 = 0x7B;
 
 const C3: u8 = 0x3C;
 const C_SHARP3: u8 = 0x3D;
@@ -20,7 +21,50 @@ const A3: u8 = 0x45;
 const A_SHARP3: u8 = 0x46;
 const B3: u8 = 0x47;
 
-const PANIC: u8 = 0x7B;
+pub struct MidiPlugin;
+
+impl Plugin for MidiPlugin {
+    fn build(&self, app: &mut App) {
+        let mut handle: Option<MidiOutputConnection> = None;
+
+        let midi_out = MidiOutput::new("My Test Output").unwrap();
+        let out_ports = midi_out.ports();
+        let port: Option<&MidiOutputPort> = out_ports.get(0);
+        if port.is_some() {
+            println!(
+                "Acquired MIDI port: {}",
+                midi_out.port_name(port.unwrap()).unwrap()
+            );
+
+            if let Ok(connect_result) = midi_out.connect(port.unwrap(), "test") {
+                handle = Some(connect_result);
+            } else {
+                println!("Failed to connect to MIDI port");
+            }
+        } else {
+            println!("Failed to acquire MIDI port");
+        }
+
+        app.insert_resource(Midi {
+            output_handle: handle,
+        });
+        app.add_event::<MidiOutputEvent>();
+        app.add_systems(Update, process_output_events);
+    }
+}
+
+#[derive(Resource)]
+struct Midi {
+    output_handle: Option<MidiOutputConnection>,
+}
+
+impl Drop for Midi {
+    fn drop(&mut self) {
+        if let Some(midi_output) = &mut self.output_handle {
+            let _ = midi_output.send(&[CC, PANIC, 0]);
+        }
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, EnumIter)]
 pub enum Note {
@@ -93,26 +137,22 @@ pub enum MidiOutputEvent {
     },
 }
 
-pub fn send_event(event: &MidiOutputEvent, connection: &mut Option<MidiOutputConnection>) {
-    if let Some(output) = connection {
-        match event {
-            MidiOutputEvent::NoteOn {
-                note,
-                octave,
-                velocity,
-            } => {
-                let _ = output.send(&[NOTE_ON_MSG, note.to_value(*octave), *velocity]);
-            }
-            MidiOutputEvent::NoteOff { note, octave } => {
-                let _ = output.send(&[NOTE_OFF_MSG, note.to_value(*octave), 0x7F]);
+fn process_output_events(mut events: EventReader<MidiOutputEvent>, mut midi: ResMut<Midi>) {
+    for event in events.read() {
+        if let Some(output) = &mut midi.output_handle {
+            match event {
+                MidiOutputEvent::NoteOn {
+                    note,
+                    octave,
+                    velocity,
+                } => {
+                    let _ = output.send(&[NOTE_ON_MSG, note.to_value(*octave), *velocity]);
+                }
+                MidiOutputEvent::NoteOff { note, octave } => {
+                    let _ = output.send(&[NOTE_OFF_MSG, note.to_value(*octave), 0x7F]);
+                }
             }
         }
-    }
-}
-
-pub fn panic(midi_output: &mut Option<MidiOutputConnection>) {
-    if let Some(midi_output) = midi_output {
-        let _ = midi_output.send(&[CC, PANIC, 0]);
     }
 }
 
