@@ -10,6 +10,58 @@ use bevy_egui::{egui, EguiContexts};
 use strum::IntoEnumIterator;
 
 #[derive(Component)]
+pub struct Cursor {
+    pub size: Size,
+}
+
+impl Cursor {
+    pub fn get_mesh(&self, meshes: &mut ResMut<Assets<Mesh>>) -> Mesh2d {
+        Mesh2d(meshes.add(Circle::new(self.size.to_radius())))
+    }
+
+    pub fn get_material(
+        &self,
+        materials: &mut ResMut<Assets<ColorMaterial>>,
+    ) -> MeshMaterial2d<ColorMaterial> {
+        const CURSOR_OPACITY: f32 = 0.05;
+
+        MeshMaterial2d(materials.add(ColorMaterial::from_color(
+            self.size.to_color().with_alpha(CURSOR_OPACITY),
+        )))
+    }
+}
+
+#[derive(Bundle)]
+pub struct CursorBundle {
+    marker: Cursor,
+    transform: Transform,
+    mesh: Mesh2d,
+    material: MeshMaterial2d<ColorMaterial>,
+    visibility: Visibility,
+}
+
+impl CursorBundle {
+    pub fn new(
+        size: Size,
+        position: Vec2,
+        meshes: &mut ResMut<Assets<Mesh>>,
+        materials: &mut ResMut<Assets<ColorMaterial>>,
+    ) -> Self {
+        let cursor = Cursor { size };
+        let mesh = cursor.get_mesh(meshes);
+        let material = cursor.get_material(materials);
+
+        CursorBundle {
+            marker: cursor,
+            transform: Transform::from_xyz(position.x, position.y, 1.0),
+            mesh,
+            material,
+            visibility: Visibility::Hidden,
+        }
+    }
+}
+
+#[derive(Component)]
 pub struct BallSelector {
     pub size: Size,
 }

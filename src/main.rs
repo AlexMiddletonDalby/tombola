@@ -6,6 +6,7 @@ mod settings;
 mod size;
 mod ui;
 
+use crate::ui::CursorBundle;
 use avian2d::prelude::*;
 use ball::{Ball, BallBundle};
 use bevy::core_pipeline::bloom::Bloom;
@@ -49,6 +50,7 @@ fn main() {
                 spawn_tombola,
                 setup_camera,
                 spawn_ball_selectors.after(setup_camera),
+                spawn_cursor,
             ),
         )
         .add_systems(
@@ -61,6 +63,9 @@ fn main() {
                 fade_pads,
                 update_selector_positions,
                 update_highlight.after(update_selector_positions),
+                update_cursor_size,
+                update_cursor_position,
+                update_cursor_visibility.after(update_cursor_position),
                 clean_up_balls,
                 update_tombola_spin,
                 update_tombola_notes,
@@ -178,6 +183,20 @@ fn spawn_ball_selectors(
     ));
 }
 
+fn spawn_cursor(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    selected_ball: Res<SelectedBall>,
+) {
+    commands.spawn(CursorBundle::new(
+        selected_ball.size,
+        Vec2::default(),
+        &mut meshes,
+        &mut materials,
+    ));
+}
+
 //--------------------------------------------------------------------------------------------------
 //Update
 
@@ -219,6 +238,56 @@ fn update_highlight(
             highlight.translation.x = pos.x;
             highlight.translation.y = pos.y;
         }
+    }
+}
+
+fn update_cursor_position(
+    mut cursors: Query<&mut Transform, With<ui::Cursor>>,
+    world_mouse: Res<WorldMouse>,
+) {
+    if let Ok(mut cursor) = cursors.get_single_mut() {
+        cursor.translation.x = world_mouse.position.x;
+        cursor.translation.y = world_mouse.position.y;
+    }
+}
+
+fn update_cursor_visibility(
+    mut cursors: Query<&mut Visibility, With<ui::Cursor>>,
+    window: Query<&Window, With<PrimaryWindow>>,
+    world_mouse: Res<WorldMouse>,
+    selectors: Query<(&BallSelector, &Transform)>,
+    mut egui: EguiContexts,
+) {
+    let window = window.single();
+
+    if let Ok(mut cursor_visibility) = cursors.get_single_mut() {
+        let is_over_ui = egui.ctx_mut().is_pointer_over_area();
+        let is_off_screen = window.cursor_position().is_none();
+        let is_over_selector =
+            ui::pick_selector(&selectors.iter().collect(), world_mouse.position).is_some();
+
+        *cursor_visibility = if is_over_ui || is_off_screen || is_over_selector {
+            Visibility::Hidden
+        } else {
+            Visibility::Visible
+        };
+    }
+}
+
+fn update_cursor_size(
+    mut cursors: Query<(
+        &mut ui::Cursor,
+        &mut Mesh2d,
+        &mut MeshMaterial2d<ColorMaterial>,
+    )>,
+    selected_ball: Res<SelectedBall>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    if let Ok((mut cursor, mut mesh, mut material)) = cursors.get_single_mut() {
+        cursor.size = selected_ball.size;
+        *mesh = cursor.get_mesh(&mut meshes);
+        *material = cursor.get_material(&mut materials);
     }
 }
 
