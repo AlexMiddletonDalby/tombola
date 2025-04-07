@@ -10,6 +10,7 @@ use crate::ui::CursorBundle;
 use avian2d::prelude::*;
 use ball::{Ball, BallBundle};
 use bevy::core_pipeline::bloom::Bloom;
+use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::{EguiContexts, EguiPlugin};
@@ -58,6 +59,7 @@ fn main() {
             (
                 update_world_mouse,
                 handle_click,
+                handle_scroll,
                 handle_collisions,
                 note_off_pads,
                 fade_pads,
@@ -324,6 +326,27 @@ fn handle_click(
     } else if buttons.just_pressed(MouseButton::Right) {
         for (entity, _ball) in balls.iter() {
             commands.entity(entity).despawn();
+        }
+    }
+}
+
+fn handle_scroll(mut scrolls: EventReader<MouseWheel>, mut selected_ball: ResMut<SelectedBall>) {
+    for event in scrolls.read() {
+        match event.unit {
+            MouseScrollUnit::Line => {
+                if event.y < -0.099 {
+                    selected_ball.size = selected_ball.size.increment();
+                } else if event.y > 0.099 {
+                    selected_ball.size = selected_ball.size.decrement();
+                }
+            }
+            MouseScrollUnit::Pixel => {
+                if event.y < -50.0 {
+                    selected_ball.size = selected_ball.size.increment();
+                } else if event.y > 50.0 {
+                    selected_ball.size = selected_ball.size.decrement();
+                }
+            }
         }
     }
 }

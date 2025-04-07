@@ -6,6 +6,7 @@ pub enum Size {
     Medium,
     Large,
 }
+
 impl Size {
     pub const fn to_octave(&self) -> i32 {
         match self {
@@ -28,6 +29,22 @@ impl Size {
             Size::Small => Color::linear_rgb(1.8, 0.3, 0.3),
             Size::Medium => Color::linear_rgb(1.5, 1.3, 0.3),
             Size::Large => Color::linear_rgb(0.2, 0.2, 2.3),
+        }
+    }
+
+    pub fn increment(&self) -> Size {
+        match self {
+            Size::Small => Size::Medium,
+            Size::Medium => Size::Large,
+            Size::Large => Size::Large,
+        }
+    }
+
+    pub fn decrement(&self) -> Size {
+        match self {
+            Size::Small => Size::Small,
+            Size::Medium => Size::Small,
+            Size::Large => Size::Medium,
         }
     }
 }
