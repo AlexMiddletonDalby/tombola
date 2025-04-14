@@ -1,6 +1,7 @@
 use crate::settings::Settings;
 use crate::size::Size;
 
+use crate::geometry::Shape;
 use crate::midi;
 use bevy::asset::Assets;
 use bevy::color::Color;
@@ -162,6 +163,20 @@ pub fn show_settings_menu(mut egui: EguiContexts, settings: &mut Settings) -> bo
         .default_open(false)
         .show(egui.ctx_mut(), |ui| {
             ui.collapsing("World", |ui| {
+                ui.label("Shape");
+                egui::ComboBox::from_id_salt("shape")
+                    .selected_text(settings.world.tombola_shape.to_string())
+                    .show_ui(ui, |ui| {
+                        for shape in Shape::iter() {
+                            ui.selectable_value(
+                                &mut settings.world.tombola_shape,
+                                shape,
+                                shape.to_string(),
+                            );
+                        }
+                    });
+                ui.add_space(10.0);
+
                 ui.add(
                     egui::Slider::new(&mut settings.world.tombola_spin, -2.0..=2.0).text("Spin"),
                 );
@@ -175,6 +190,7 @@ pub fn show_settings_menu(mut egui: EguiContexts, settings: &mut Settings) -> bo
                         .text("Gravity")
                         .fixed_decimals(2),
                 );
+
                 ui.checkbox(&mut settings.world.max_balls.enabled, "Max Balls");
                 if settings.world.max_balls.enabled {
                     ui.add(egui::Slider::new(
@@ -182,6 +198,7 @@ pub fn show_settings_menu(mut egui: EguiContexts, settings: &mut Settings) -> bo
                         1..=20,
                     ));
                 }
+
                 ui.checkbox(
                     &mut settings.world.max_bounces.enabled,
                     "Max Bounces per Ball",
@@ -205,7 +222,6 @@ pub fn show_settings_menu(mut egui: EguiContexts, settings: &mut Settings) -> bo
                             }
                         });
                 }
-
                 ui.add_space(10.0);
 
                 ui.checkbox(

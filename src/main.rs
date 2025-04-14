@@ -6,6 +6,7 @@ mod settings;
 mod size;
 mod ui;
 
+use crate::midi::Note;
 use crate::ui::CursorBundle;
 use avian2d::prelude::*;
 use ball::{Ball, BallBundle};
@@ -48,7 +49,7 @@ fn main() {
         .add_systems(
             Startup,
             (
-                spawn_tombola,
+                spawn_default_tombola,
                 setup_camera,
                 spawn_ball_selectors.after(setup_camera),
                 spawn_cursor,
@@ -69,10 +70,11 @@ fn main() {
                 update_cursor_position,
                 update_cursor_visibility.after(update_cursor_position),
                 clean_up_balls,
-                update_tombola_spin,
-                update_tombola_notes,
-                update_bounciness,
                 update_gravity,
+                update_tombola_shape,
+                update_tombola_notes.after(update_tombola_shape),
+                update_tombola_spin,
+                update_bounciness,
             ),
         )
         .insert_resource(ClearColor(Color::linear_rgb(0., 0., 0.)))
@@ -104,43 +106,63 @@ fn setup_camera(mut commands: Commands) {
 }
 
 #[derive(Component)]
-struct Tombola;
+struct Tombola {
+    shape: geometry::Shape,
+}
 
 fn spawn_tombola(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    settings: Res<Settings>,
+    commands: &mut Commands,
+    mut meshes: &mut ResMut<Assets<Mesh>>,
+    mut materials: &mut ResMut<Assets<ColorMaterial>>,
+    shape: geometry::Shape,
+    spin: f32,
+    bounciness: f32,
+    notes: &Vec<midi::Note>,
 ) {
     const SIDE_LENGTH: f32 = 300.0;
     const THICKNESS: f32 = 5.0;
-
     let size = Vec2::new(SIDE_LENGTH, THICKNESS);
     let position = Vec2::new(0.0, 0.0);
 
     commands
         .spawn((
-            Tombola {},
+            Tombola { shape },
             RigidBody::Kinematic,
-            AngularVelocity(-settings.world.tombola_spin),
+            AngularVelocity(-spin),
             Transform::from_xyz(position.x, position.y, 0.0),
             Visibility::default(),
         ))
         .with_children(|commands| {
-            let transforms = geometry::hexagon(position, SIDE_LENGTH);
-
+            let transforms = shape.get_side_transforms(position, SIDE_LENGTH);
             for (index, transform) in transforms.into_iter().enumerate() {
                 commands.spawn(PadBundle::new(
                     index,
                     Vec2::new(size.x + (THICKNESS / 2.0), size.y),
                     transform,
-                    settings.midi.tombola_notes[index],
-                    settings.world.bounciness,
+                    notes[index],
+                    bounciness,
                     &mut meshes,
                     &mut materials,
                 ));
             }
         });
+}
+
+fn spawn_default_tombola(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    settings: Res<Settings>,
+) {
+    spawn_tombola(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        settings.world.tombola_shape,
+        settings.world.tombola_spin,
+        settings.world.bounciness,
+        &settings.midi.tombola_notes,
+    );
 }
 
 fn get_ball_selector_x(window: &Window) -> f32 {
@@ -347,6 +369,33 @@ fn handle_scroll(mut scrolls: EventReader<MouseWheel>, mut selected_ball: ResMut
                     selected_ball.size = selected_ball.size.decrement();
                 }
             }
+        }
+    }
+}
+
+fn update_tombola_shape(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut settings: ResMut<Settings>,
+    tombola: Query<(Entity, &Tombola)>,
+) {
+    if let Ok((entity, tombola)) = tombola.get_single() {
+        if tombola.shape != settings.world.tombola_shape {
+            commands.entity(entity).despawn_recursive();
+
+            spawn_tombola(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+                settings.world.tombola_shape,
+                settings.world.tombola_spin,
+                settings.world.bounciness,
+                &settings.midi.tombola_notes,
+            );
+
+            let num_sides = settings.world.tombola_shape.get_num_sides();
+            settings.midi.tombola_notes.resize(num_sides, Note::C);
         }
     }
 }

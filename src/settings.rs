@@ -1,3 +1,4 @@
+use crate::geometry::Shape;
 use crate::midi;
 use bevy::prelude::Resource;
 
@@ -12,6 +13,7 @@ pub struct BounceLimit {
 }
 
 pub struct World {
+    pub tombola_shape: Shape,
     pub tombola_spin: f32,
     pub bounciness: f32,
     pub gravity: f32,
@@ -45,6 +47,7 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             world: World {
+                tombola_shape: Shape::Hexagon,
                 tombola_spin: 1.5,
                 bounciness: 1.0,
                 gravity: 1.0,
