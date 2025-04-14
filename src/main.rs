@@ -14,7 +14,7 @@ use bevy::core_pipeline::bloom::Bloom;
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use bevy_egui::{EguiContexts, EguiPlugin};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPreUpdateSet};
 use midi::{MidiOutputEvent, MidiPlugin};
 use pad::{Pad, PadBundle};
 use settings::Settings;
@@ -59,7 +59,7 @@ fn main() {
             Update,
             (
                 update_world_mouse,
-                handle_click,
+                handle_click.after(EguiPreUpdateSet::InitContexts),
                 handle_scroll,
                 handle_collisions,
                 note_off_pads,
