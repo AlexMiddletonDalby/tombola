@@ -43,13 +43,39 @@ impl Shape {
     pub fn get_side_transforms(&self, centre: Vec2, side_length: f32) -> Vec<Transform> {
         match self {
             Shape::Triangle => Vec::new(),
-            Shape::Square => Vec::new(),
+            Shape::Square => square(centre, side_length),
             Shape::Pentagon => Vec::new(),
             Shape::Hexagon => hexagon(centre, side_length),
             Shape::Heptagon => Vec::new(),
             Shape::Octagon => Vec::new(),
         }
     }
+}
+
+pub fn triangle(centre: Vec2, side_length: f32) -> Vec<Transform> {
+    Vec::new()
+}
+
+pub fn square(centre: Vec2, side_length: f32) -> Vec<Transform> {
+    let span = side_length / 2.0;
+
+    let mut transforms = Vec::new();
+
+    transforms.push(Transform::from_xyz(centre.x, centre.y - span, 0.0));
+    transforms.push(
+        Transform::from_xyz(centre.x, centre.y + span, 0.0)
+            .with_rotation(Quat::from_rotation_z(PI)),
+    );
+    transforms.push(
+        Transform::from_xyz(centre.x - span, centre.y, 0.0)
+            .with_rotation(Quat::from_rotation_z(PI / 2.0)),
+    );
+    transforms.push(
+        Transform::from_xyz(centre.x + span, centre.y, 0.0)
+            .with_rotation(Quat::from_rotation_z(-PI / 2.0)),
+    );
+
+    transforms
 }
 
 pub fn hexagon(centre: Vec2, side_length: f32) -> Vec<Transform> {

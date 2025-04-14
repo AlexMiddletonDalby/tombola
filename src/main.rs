@@ -119,9 +119,11 @@ fn spawn_tombola(
     bounciness: f32,
     notes: &Vec<midi::Note>,
 ) {
-    const SIDE_LENGTH: f32 = 300.0;
     const THICKNESS: f32 = 5.0;
-    let size = Vec2::new(SIDE_LENGTH, THICKNESS);
+    const BASE_SIDE_LENGTH: f32 = 1800.0;
+
+    let side_length = BASE_SIDE_LENGTH / shape.get_num_sides() as f32;
+    let size = Vec2::new(side_length, THICKNESS);
     let position = Vec2::new(0.0, 0.0);
 
     commands
@@ -133,7 +135,7 @@ fn spawn_tombola(
             Visibility::default(),
         ))
         .with_children(|commands| {
-            let transforms = shape.get_side_transforms(position, SIDE_LENGTH);
+            let transforms = shape.get_side_transforms(position, side_length);
             for (index, transform) in transforms.into_iter().enumerate() {
                 commands.spawn(PadBundle::new(
                     index,
@@ -384,6 +386,9 @@ fn update_tombola_shape(
         if tombola.shape != settings.world.tombola_shape {
             commands.entity(entity).despawn_recursive();
 
+            let num_sides = settings.world.tombola_shape.get_num_sides();
+            settings.midi.tombola_notes.resize(num_sides, Note::C);
+
             spawn_tombola(
                 &mut commands,
                 &mut meshes,
@@ -393,9 +398,6 @@ fn update_tombola_shape(
                 settings.world.bounciness,
                 &settings.midi.tombola_notes,
             );
-
-            let num_sides = settings.world.tombola_shape.get_num_sides();
-            settings.midi.tombola_notes.resize(num_sides, Note::C);
         }
     }
 }
