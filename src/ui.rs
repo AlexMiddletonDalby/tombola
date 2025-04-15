@@ -159,94 +159,103 @@ pub fn pick_selector(selectors: &Vec<(&BallSelector, &Transform)>, pos: Vec2) ->
 }
 
 pub fn show_settings_menu(mut egui: EguiContexts, settings: &mut Settings) -> bool {
-    egui::Window::new("Settings")
-        .default_open(false)
-        .show(egui.ctx_mut(), |ui| {
-            ui.collapsing("World", |ui| {
-                ui.label("Shape");
-                egui::ComboBox::from_id_salt("shape")
-                    .selected_text(settings.world.tombola_shape.to_string())
-                    .show_ui(ui, |ui| {
-                        for shape in Shape::iter() {
-                            ui.selectable_value(
-                                &mut settings.world.tombola_shape,
-                                shape,
-                                shape.to_string(),
-                            );
-                        }
-                    });
-                ui.add_space(10.0);
-
-                ui.add(
-                    egui::Slider::new(&mut settings.world.tombola_spin, -2.0..=2.0).text("Spin"),
-                );
-                ui.add(
-                    egui::Slider::new(&mut settings.world.bounciness, 0.0..=1.0)
-                        .text("Bounciness")
-                        .fixed_decimals(2),
-                );
-                ui.add(
-                    egui::Slider::new(&mut settings.world.gravity, 0.0..=1.5)
-                        .text("Gravity")
-                        .fixed_decimals(2),
-                );
-
-                ui.checkbox(&mut settings.world.max_balls.enabled, "Max Balls");
-                if settings.world.max_balls.enabled {
-                    ui.add(egui::Slider::new(
-                        &mut settings.world.max_balls.limit,
-                        1..=20,
-                    ));
-                }
-
-                ui.checkbox(
-                    &mut settings.world.max_bounces.enabled,
-                    "Max Bounces per Ball",
-                );
-                if settings.world.max_bounces.enabled {
-                    ui.add(egui::Slider::new(
-                        &mut settings.world.max_bounces.limit,
-                        1..=10,
-                    ));
-                }
-            });
-            ui.collapsing("MIDI", |ui| {
-                ui.label("Notes");
-                for (index, current_note) in &mut settings.midi.tombola_notes.iter_mut().enumerate()
-                {
-                    egui::ComboBox::from_id_salt(index)
-                        .selected_text(current_note.to_string())
+    if let Some(ctx) = egui.try_ctx_mut() {
+        egui::Window::new("Settings")
+            .default_open(false)
+            .show(ctx, |ui| {
+                ui.collapsing("World", |ui| {
+                    ui.label("Shape");
+                    egui::ComboBox::from_id_salt("shape")
+                        .selected_text(settings.world.tombola_shape.to_string())
                         .show_ui(ui, |ui| {
-                            for note in midi::Note::iter() {
-                                ui.selectable_value(current_note, note, note.to_string());
+                            for shape in Shape::iter() {
+                                ui.selectable_value(
+                                    &mut settings.world.tombola_shape,
+                                    shape,
+                                    shape.to_string(),
+                                );
                             }
                         });
-                }
-                ui.add_space(10.0);
+                    ui.add_space(10.0);
 
-                ui.checkbox(
-                    &mut settings.midi.fixed_note_velocity.enabled,
-                    "Fixed Note Velocity",
-                );
-                if settings.midi.fixed_note_velocity.enabled {
-                    ui.add(egui::Slider::new(
-                        &mut settings.midi.fixed_note_velocity.value,
-                        0..=127,
-                    ));
-                }
-
-                ui.checkbox(
-                    &mut settings.midi.fixed_note_length.enabled,
-                    "Fixed Note Length",
-                );
-                if settings.midi.fixed_note_length.enabled {
                     ui.add(
-                        egui::Slider::new(&mut settings.midi.fixed_note_length.value, 10..=1000)
-                            .suffix("ms"),
+                        egui::Slider::new(&mut settings.world.tombola_spin, -2.0..=2.0)
+                            .text("Spin"),
                     );
-                }
-            });
-        });
+                    ui.add(
+                        egui::Slider::new(&mut settings.world.bounciness, 0.0..=1.0)
+                            .text("Bounciness")
+                            .fixed_decimals(2),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut settings.world.gravity, 0.0..=1.5)
+                            .text("Gravity")
+                            .fixed_decimals(2),
+                    );
 
-    egui.ctx_mut().is_pointer_over_area()
+                    ui.checkbox(&mut settings.world.max_balls.enabled, "Max Balls");
+                    if settings.world.max_balls.enabled {
+                        ui.add(egui::Slider::new(
+                            &mut settings.world.max_balls.limit,
+                            1..=20,
+                        ));
+                    }
+
+                    ui.checkbox(
+                        &mut settings.world.max_bounces.enabled,
+                        "Max Bounces per Ball",
+                    );
+                    if settings.world.max_bounces.enabled {
+                        ui.add(egui::Slider::new(
+                            &mut settings.world.max_bounces.limit,
+                            1..=10,
+                        ));
+                    }
+                });
+                ui.collapsing("MIDI", |ui| {
+                    ui.label("Notes");
+                    for (index, current_note) in
+                        &mut settings.midi.tombola_notes.iter_mut().enumerate()
+                    {
+                        egui::ComboBox::from_id_salt(index)
+                            .selected_text(current_note.to_string())
+                            .show_ui(ui, |ui| {
+                                for note in midi::Note::iter() {
+                                    ui.selectable_value(current_note, note, note.to_string());
+                                }
+                            });
+                    }
+                    ui.add_space(10.0);
+
+                    ui.checkbox(
+                        &mut settings.midi.fixed_note_velocity.enabled,
+                        "Fixed Note Velocity",
+                    );
+                    if settings.midi.fixed_note_velocity.enabled {
+                        ui.add(egui::Slider::new(
+                            &mut settings.midi.fixed_note_velocity.value,
+                            0..=127,
+                        ));
+                    }
+
+                    ui.checkbox(
+                        &mut settings.midi.fixed_note_length.enabled,
+                        "Fixed Note Length",
+                    );
+                    if settings.midi.fixed_note_length.enabled {
+                        ui.add(
+                            egui::Slider::new(
+                                &mut settings.midi.fixed_note_length.value,
+                                10..=1000,
+                            )
+                            .suffix("ms"),
+                        );
+                    }
+                });
+            });
+
+        return egui.ctx_mut().is_pointer_over_area();
+    }
+
+    false
 }

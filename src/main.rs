@@ -8,10 +8,12 @@ mod ui;
 
 use crate::midi::Note;
 use crate::ui::CursorBundle;
+use avian2d::math::PI;
 use avian2d::prelude::*;
 use ball::{Ball, BallBundle};
 use bevy::core_pipeline::bloom::Bloom;
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
+use bevy::math::ops::tan;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPreUpdateSet};
@@ -120,9 +122,9 @@ fn spawn_tombola(
     notes: &Vec<midi::Note>,
 ) {
     const THICKNESS: f32 = 5.0;
-    const BASE_SIDE_LENGTH: f32 = 1800.0;
+    const APOTHEM: f32 = 225.0;
 
-    let side_length = BASE_SIDE_LENGTH / shape.get_num_sides() as f32;
+    let side_length = 2.0 * APOTHEM * tan(PI / shape.get_num_sides() as f32);
     let size = Vec2::new(side_length, THICKNESS);
     let position = Vec2::new(0.0, 0.0);
 
@@ -135,7 +137,7 @@ fn spawn_tombola(
             Visibility::default(),
         ))
         .with_children(|commands| {
-            let transforms = shape.get_side_transforms(position, side_length);
+            let transforms = shape.get_side_transforms(position, APOTHEM);
             for (index, transform) in transforms.into_iter().enumerate() {
                 commands.spawn(PadBundle::new(
                     index,
@@ -232,11 +234,11 @@ fn update_world_mouse(
     camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
 ) {
     let (camera, camera_transform) = camera.single();
-    let window = window.single();
-
-    if let Some(cursor_pos) = window.cursor_position() {
-        if let Ok(world_pos) = camera.viewport_to_world(camera_transform, cursor_pos) {
-            world_mouse.position = world_pos.origin.truncate();
+    if let Ok(window) = window.get_single() {
+        if let Some(cursor_pos) = window.cursor_position() {
+            if let Ok(world_pos) = camera.viewport_to_world(camera_transform, cursor_pos) {
+                world_mouse.position = world_pos.origin.truncate();
+            }
         }
     }
 }
@@ -284,19 +286,19 @@ fn update_cursor_visibility(
     selectors: Query<(&BallSelector, &Transform)>,
     mut egui: EguiContexts,
 ) {
-    let window = window.single();
+    if let Ok(window) = window.get_single() {
+        if let Ok(mut cursor_visibility) = cursors.get_single_mut() {
+            let is_over_ui = egui.ctx_mut().is_pointer_over_area();
+            let is_off_screen = window.cursor_position().is_none();
+            let is_over_selector =
+                ui::pick_selector(&selectors.iter().collect(), world_mouse.position).is_some();
 
-    if let Ok(mut cursor_visibility) = cursors.get_single_mut() {
-        let is_over_ui = egui.ctx_mut().is_pointer_over_area();
-        let is_off_screen = window.cursor_position().is_none();
-        let is_over_selector =
-            ui::pick_selector(&selectors.iter().collect(), world_mouse.position).is_some();
-
-        *cursor_visibility = if is_over_ui || is_off_screen || is_over_selector {
-            Visibility::Hidden
-        } else {
-            Visibility::Visible
-        };
+            *cursor_visibility = if is_over_ui || is_off_screen || is_over_selector {
+                Visibility::Hidden
+            } else {
+                Visibility::Visible
+            };
+        }
     }
 }
 
