@@ -4,24 +4,22 @@ mod midi;
 mod pad;
 mod settings;
 mod size;
+mod tombola;
 mod ui;
 
-use crate::midi::Note;
+use crate::tombola::TombolaPlugin;
 use crate::ui::CursorBundle;
-use avian2d::math::PI;
 use avian2d::prelude::*;
 use ball::{Ball, BallBundle};
 use bevy::core_pipeline::bloom::Bloom;
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
-use bevy::math::ops::tan;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPreUpdateSet};
-use midi::{MidiOutputEvent, MidiPlugin};
-use pad::{Pad, PadBundle};
+use midi::MidiPlugin;
 use settings::Settings;
 use size::Size;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use ui::{BallSelector, BallSelectorBundle, Highlight, HighlightBundle};
 
 #[derive(Resource, Default)]
@@ -32,6 +30,12 @@ struct WorldMouse {
 #[derive(Resource)]
 struct SelectedBall {
     size: Size,
+}
+
+#[derive(Resource)]
+enum DragState {
+    NotDragging,
+    Dragging { start_pos: Vec2 },
 }
 
 fn get_gravity(gravity_factor: f32) -> Vec2 {
@@ -47,11 +51,11 @@ fn main() {
             PhysicsPlugins::default(),
             EguiPlugin,
             MidiPlugin,
+            TombolaPlugin,
         ))
         .add_systems(
             Startup,
             (
-                spawn_default_tombola,
                 setup_camera,
                 spawn_ball_selectors.after(setup_camera),
                 spawn_cursor,
@@ -63,9 +67,6 @@ fn main() {
                 update_world_mouse,
                 handle_click.after(EguiPreUpdateSet::InitContexts),
                 handle_scroll,
-                handle_collisions,
-                note_off_pads,
-                fade_pads,
                 update_selector_positions,
                 update_highlight.after(update_selector_positions),
                 update_cursor_size,
@@ -73,9 +74,6 @@ fn main() {
                 update_cursor_visibility.after(update_cursor_position),
                 clean_up_balls,
                 update_gravity,
-                update_tombola_shape,
-                update_tombola_notes.after(update_tombola_shape),
-                update_tombola_spin,
                 update_bounciness,
             ),
         )
@@ -86,6 +84,7 @@ fn main() {
         })
         .insert_resource(SelectedBall { size: Size::Small })
         .insert_resource(settings)
+        .insert_resource(DragState::NotDragging)
         .run();
 }
 
@@ -105,68 +104,6 @@ fn setup_camera(mut commands: Commands) {
         Bloom::OLD_SCHOOL,
         MainCamera,
     ));
-}
-
-#[derive(Component)]
-struct Tombola {
-    shape: geometry::Shape,
-}
-
-fn spawn_tombola(
-    commands: &mut Commands,
-    mut meshes: &mut ResMut<Assets<Mesh>>,
-    mut materials: &mut ResMut<Assets<ColorMaterial>>,
-    shape: geometry::Shape,
-    spin: f32,
-    bounciness: f32,
-    notes: &Vec<midi::Note>,
-) {
-    const THICKNESS: f32 = 5.0;
-    const APOTHEM: f32 = 225.0;
-
-    let side_length = 2.0 * APOTHEM * tan(PI / shape.get_num_sides() as f32);
-    let size = Vec2::new(side_length, THICKNESS);
-    let position = Vec2::new(0.0, 0.0);
-
-    commands
-        .spawn((
-            Tombola { shape },
-            RigidBody::Kinematic,
-            AngularVelocity(-spin),
-            Transform::from_xyz(position.x, position.y, 0.0),
-            Visibility::default(),
-        ))
-        .with_children(|commands| {
-            let transforms = shape.get_side_transforms(position, APOTHEM);
-            for (index, transform) in transforms.into_iter().enumerate() {
-                commands.spawn(PadBundle::new(
-                    index,
-                    Vec2::new(size.x + (THICKNESS / 2.0), size.y),
-                    transform,
-                    notes[index],
-                    bounciness,
-                    &mut meshes,
-                    &mut materials,
-                ));
-            }
-        });
-}
-
-fn spawn_default_tombola(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    settings: Res<Settings>,
-) {
-    spawn_tombola(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        settings.world.tombola_shape,
-        settings.world.tombola_spin,
-        settings.world.bounciness,
-        &settings.midi.tombola_notes,
-    );
 }
 
 fn get_ball_selector_x(window: &Window) -> f32 {
@@ -377,48 +314,6 @@ fn handle_scroll(mut scrolls: EventReader<MouseWheel>, mut selected_ball: ResMut
     }
 }
 
-fn update_tombola_shape(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut settings: ResMut<Settings>,
-    tombola: Query<(Entity, &Tombola)>,
-) {
-    if let Ok((entity, tombola)) = tombola.get_single() {
-        if tombola.shape != settings.world.tombola_shape {
-            commands.entity(entity).despawn_recursive();
-
-            let num_sides = settings.world.tombola_shape.get_num_sides();
-            settings.midi.tombola_notes.resize(num_sides, Note::C);
-
-            spawn_tombola(
-                &mut commands,
-                &mut meshes,
-                &mut materials,
-                settings.world.tombola_shape,
-                settings.world.tombola_spin,
-                settings.world.bounciness,
-                &settings.midi.tombola_notes,
-            );
-        }
-    }
-}
-
-fn update_tombola_spin(
-    mut spin: Query<&mut AngularVelocity, With<Tombola>>,
-    settings: Res<Settings>,
-) {
-    if let Ok(mut tombola) = spin.get_single_mut() {
-        tombola.0 = -settings.world.tombola_spin;
-    }
-}
-
-fn update_tombola_notes(mut pads: Query<&mut Pad>, settings: Res<Settings>) {
-    for mut pad in pads.iter_mut() {
-        pad.note = settings.midi.tombola_notes[pad.index];
-    }
-}
-
 fn update_bounciness(mut bouncy_things: Query<&mut Restitution>, settings: Res<Settings>) {
     for mut thing in bouncy_things.iter_mut() {
         thing.coefficient = settings.world.bounciness;
@@ -427,132 +322,6 @@ fn update_bounciness(mut bouncy_things: Query<&mut Restitution>, settings: Res<S
 
 fn update_gravity(mut gravity: ResMut<Gravity>, settings: Res<Settings>) {
     gravity.0 = get_gravity(settings.world.gravity);
-}
-
-fn collide(
-    collision: &Contacts,
-    pad: &mut Pad,
-    ball: &mut Ball,
-    ball_velocity: &LinearVelocity,
-    midi: &mut EventWriter<MidiOutputEvent>,
-    materials: &mut Assets<ColorMaterial>,
-    settings: &Settings,
-) {
-    if collision.collision_started() {
-        if pad.playing_notes.contains_key(&ball.size.to_octave()) {
-            midi.send(MidiOutputEvent::NoteOff {
-                note: pad.note,
-                octave: ball.size.to_octave(),
-            });
-        }
-
-        midi.send(MidiOutputEvent::NoteOn {
-            note: pad.note,
-            octave: ball.size.to_octave(),
-            velocity: if settings.midi.fixed_note_velocity.enabled {
-                settings.midi.fixed_note_velocity.value
-            } else {
-                midi::to_velocity(ball_velocity.length())
-            },
-        });
-
-        pad.playing_notes.insert(
-            ball.size.to_octave(),
-            Timer::new(
-                if settings.midi.fixed_note_length.enabled {
-                    Duration::from_millis(settings.midi.fixed_note_length.value)
-                } else {
-                    midi::to_note_duration(ball_velocity.length())
-                },
-                TimerMode::Once,
-            ),
-        );
-
-        if let Some(material) = materials.get_mut(pad.material.0.id()) {
-            material.color = Pad::hit_color();
-        }
-
-        ball.bounces += 1;
-    }
-}
-
-fn handle_collisions(
-    mut collisions: EventReader<Collision>,
-    mut midi: EventWriter<MidiOutputEvent>,
-    mut pads: Query<&mut Pad>,
-    mut balls: Query<(&mut Ball, &LinearVelocity)>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    settings: Res<Settings>,
-) {
-    for Collision(collision) in collisions.read() {
-        if let Ok(mut pad) = pads.get_mut(collision.entity1) {
-            if let Ok((mut ball, velocity)) = balls.get_mut(collision.entity2) {
-                collide(
-                    collision,
-                    &mut pad,
-                    &mut ball,
-                    velocity,
-                    &mut midi,
-                    &mut materials,
-                    &settings,
-                );
-            }
-        }
-        if let Ok(mut pad) = pads.get_mut(collision.entity2) {
-            if let Ok((mut ball, velocity)) = balls.get_mut(collision.entity1) {
-                collide(
-                    collision,
-                    &mut pad,
-                    &mut ball,
-                    velocity,
-                    &mut midi,
-                    &mut materials,
-                    &settings,
-                );
-            }
-        }
-    }
-}
-
-fn note_off_pads(
-    mut pads: Query<&mut Pad>,
-    time: Res<Time>,
-    mut midi: EventWriter<MidiOutputEvent>,
-) {
-    for mut pad in pads.iter_mut() {
-        let note = pad.note.clone();
-
-        for (_, timer) in pad.playing_notes.iter_mut() {
-            timer.tick(time.delta());
-        }
-
-        pad.playing_notes.retain(|octave, timer| {
-            if timer.just_finished() {
-                midi.send(MidiOutputEvent::NoteOff {
-                    note,
-                    octave: octave.clone(),
-                });
-                return false;
-            }
-
-            true
-        });
-    }
-}
-
-fn fade_pads(
-    mut pads: Query<&mut Pad>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    time: Res<Time>,
-) {
-    const FADE_SPEED: f32 = 5.0;
-    let amount = FADE_SPEED * time.delta_secs();
-
-    for pad in pads.iter_mut() {
-        if let Some(material) = materials.get_mut(pad.material.0.id()) {
-            material.color = material.color.mix(&Pad::default_color(), amount);
-        }
-    }
 }
 
 fn oldest_ball(balls: &Vec<(Entity, SystemTime)>) -> Option<Entity> {
