@@ -14,6 +14,7 @@ pub struct Ball {
 pub struct BallBundle {
     marker: Ball,
     transform: Transform,
+    velocity: LinearVelocity,
     body: RigidBody,
     restitution: Restitution,
     collider: Collider,
@@ -24,6 +25,7 @@ pub struct BallBundle {
 impl BallBundle {
     pub fn new(
         position: Vec2,
+        initial_velocity: Vec2,
         size: Size,
         bounciness: f32,
         meshes: &mut ResMut<Assets<Mesh>>,
@@ -36,6 +38,7 @@ impl BallBundle {
                 spawn_time: SystemTime::now(),
             },
             transform: Transform::from_xyz(position.x, position.y, 0.0),
+            velocity: LinearVelocity(initial_velocity),
             body: RigidBody::Dynamic,
             restitution: Restitution::new(bounciness),
             collider: Collider::circle(size.to_radius()),

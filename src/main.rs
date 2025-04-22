@@ -19,6 +19,7 @@ use bevy_egui::{EguiContexts, EguiPlugin, EguiPreUpdateSet};
 use midi::MidiPlugin;
 use settings::Settings;
 use size::Size;
+use std::cmp::PartialEq;
 use std::time::SystemTime;
 use ui::{BallSelector, BallSelectorBundle, Highlight, HighlightBundle};
 
@@ -32,10 +33,10 @@ struct SelectedBall {
     size: Size,
 }
 
-#[derive(Resource)]
+#[derive(Resource, PartialEq)]
 enum DragState {
     NotDragging,
-    Dragging { start_pos: Vec2 },
+    Dragging(Vec2),
 }
 
 fn get_gravity(gravity_factor: f32) -> Vec2 {
@@ -72,12 +73,13 @@ fn main() {
                 update_cursor_size,
                 update_cursor_position,
                 update_cursor_visibility.after(update_cursor_position),
+                draw_drag_arrow,
                 clean_up_balls,
                 update_gravity,
                 update_bounciness,
             ),
         )
-        .insert_resource(ClearColor(Color::linear_rgb(0., 0., 0.)))
+        .insert_resource(ClearColor(Color::linear_rgb(0.0, 0.0, 0.0)))
         .insert_resource(Gravity(get_gravity(settings.world.gravity)))
         .insert_resource(WorldMouse {
             position: Vec2::ZERO,
@@ -87,9 +89,6 @@ fn main() {
         .insert_resource(DragState::NotDragging)
         .run();
 }
-
-//--------------------------------------------------------------------------------------------------
-//Startup
 
 #[derive(Component)]
 struct MainCamera;
@@ -108,7 +107,6 @@ fn setup_camera(mut commands: Commands) {
 
 fn get_ball_selector_x(window: &Window) -> f32 {
     const SPACING: f32 = 50.0;
-
     window.width() / 2.0 - SPACING
 }
 
@@ -162,9 +160,6 @@ fn spawn_cursor(
     ));
 }
 
-//--------------------------------------------------------------------------------------------------
-//Update
-
 fn update_world_mouse(
     mut world_mouse: ResMut<WorldMouse>,
     window: Query<&Window, With<PrimaryWindow>>,
@@ -209,10 +204,16 @@ fn update_highlight(
 fn update_cursor_position(
     mut cursors: Query<&mut Transform, With<ui::Cursor>>,
     world_mouse: Res<WorldMouse>,
+    drag_state: Res<DragState>,
 ) {
     if let Ok(mut cursor) = cursors.get_single_mut() {
-        cursor.translation.x = world_mouse.position.x;
-        cursor.translation.y = world_mouse.position.y;
+        if let DragState::Dragging(pos) = *drag_state {
+            cursor.translation.x = pos.x;
+            cursor.translation.y = pos.y;
+        } else {
+            cursor.translation.x = world_mouse.position.x;
+            cursor.translation.y = world_mouse.position.y;
+        }
     }
 }
 
@@ -256,12 +257,20 @@ fn update_cursor_size(
     }
 }
 
+fn draw_drag_arrow(mut gizmos: Gizmos, drag_state: Res<DragState>, world_mouse: Res<WorldMouse>) {
+    if let DragState::Dragging(pos) = *drag_state {
+        let drag_vector = pos - world_mouse.position;
+        gizmos.arrow_2d(pos, pos + drag_vector, Color::linear_rgb(0.5, 0.5, 0.5));
+    }
+}
+
 fn handle_click(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut selected_ball: ResMut<SelectedBall>,
     mut settings: ResMut<Settings>,
+    mut drag_state: ResMut<DragState>,
     world_mouse: Res<WorldMouse>,
     buttons: Res<ButtonInput<MouseButton>>,
     selectors: Query<(&BallSelector, &Transform)>,
@@ -270,7 +279,14 @@ fn handle_click(
 ) {
     let handled = ui::show_settings_menu(egui, settings.as_mut());
     if handled {
+        *drag_state = DragState::NotDragging;
         return;
+    }
+
+    if buttons.just_pressed(MouseButton::Right) {
+        for (entity, _ball) in balls.iter() {
+            commands.entity(entity).despawn();
+        }
     }
 
     if buttons.just_pressed(MouseButton::Left) {
@@ -278,17 +294,25 @@ fn handle_click(
         {
             selected_ball.size = selector
         } else {
+            *drag_state = DragState::Dragging(world_mouse.position);
+        }
+    }
+
+    if buttons.just_released(MouseButton::Left) {
+        if let DragState::Dragging(pos) = *drag_state {
+            const DRAG_POWER: f32 = 4.0;
+            let drag_vector = pos - world_mouse.position;
+
             commands.spawn(BallBundle::new(
-                world_mouse.position,
+                pos,
+                drag_vector * DRAG_POWER,
                 selected_ball.size,
                 settings.world.bounciness,
                 &mut meshes,
                 &mut materials,
             ));
-        }
-    } else if buttons.just_pressed(MouseButton::Right) {
-        for (entity, _ball) in balls.iter() {
-            commands.entity(entity).despawn();
+
+            *drag_state = DragState::NotDragging;
         }
     }
 }
