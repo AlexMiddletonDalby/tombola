@@ -7,6 +7,7 @@ mod size;
 mod tombola;
 mod ui;
 
+use crate::midi::MidiConfig;
 use crate::tombola::TombolaPlugin;
 use crate::ui::CursorBundle;
 use avian2d::prelude::*;
@@ -270,6 +271,7 @@ fn handle_click(
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut selected_ball: ResMut<SelectedBall>,
     mut settings: ResMut<Settings>,
+    mut midi_config: ResMut<MidiConfig>,
     mut drag_state: ResMut<DragState>,
     world_mouse: Res<WorldMouse>,
     buttons: Res<ButtonInput<MouseButton>>,
@@ -277,7 +279,7 @@ fn handle_click(
     balls: Query<(Entity, &Ball)>,
     egui: EguiContexts,
 ) {
-    let handled = ui::show_settings_menu(egui, settings.as_mut());
+    let handled = ui::show_settings_menu(egui, settings.as_mut(), midi_config.as_mut());
     if handled {
         *drag_state = DragState::NotDragging;
         return;

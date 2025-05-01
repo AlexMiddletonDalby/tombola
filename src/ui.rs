@@ -158,7 +158,11 @@ pub fn pick_selector(selectors: &Vec<(&BallSelector, &Transform)>, pos: Vec2) ->
     None
 }
 
-pub fn show_settings_menu(mut egui: EguiContexts, settings: &mut Settings) -> bool {
+pub fn show_settings_menu(
+    mut egui: EguiContexts,
+    settings: &mut Settings,
+    midi_config: &mut midi::MidiConfig,
+) -> bool {
     if let Some(ctx) = egui.try_ctx_mut() {
         egui::Window::new("Settings")
             .default_open(false)
@@ -213,6 +217,25 @@ pub fn show_settings_menu(mut egui: EguiContexts, settings: &mut Settings) -> bo
                     }
                 });
                 ui.collapsing("MIDI", |ui| {
+                    ui.label("Device");
+                    let ports = midi_config.get_ports();
+                    if !ports.is_empty() {
+                        egui::ComboBox::from_id_salt("midi_ports")
+                            .selected_text(midi_config.active_port.clone())
+                            .show_ui(ui, |ui| {
+                                for port in midi_config.get_ports() {
+                                    ui.selectable_value(
+                                        &mut midi_config.active_port,
+                                        port.name.clone(),
+                                        port.name,
+                                    );
+                                }
+                            });
+                    } else {
+                        ui.label("No midi ports detected");
+                    }
+                    ui.add_space(10.0);
+
                     ui.label("Notes");
                     for (index, current_note) in
                         &mut settings.midi.tombola_notes.iter_mut().enumerate()

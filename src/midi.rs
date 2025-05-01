@@ -25,44 +25,101 @@ pub struct MidiPlugin;
 
 impl Plugin for MidiPlugin {
     fn build(&self, app: &mut App) {
-        let mut handle: Option<MidiOutputConnection> = None;
-
-        let midi_out = MidiOutput::new("My Test Output").unwrap();
-        let out_ports = midi_out.ports();
-        let port: Option<&MidiOutputPort> = out_ports.get(0);
-        if port.is_some() {
-            println!(
-                "Acquired MIDI port: {}",
-                midi_out.port_name(port.unwrap()).unwrap()
-            );
-
-            if let Ok(connect_result) = midi_out.connect(port.unwrap(), "test") {
-                handle = Some(connect_result);
-            } else {
-                println!("Failed to connect to MIDI port");
-            }
-        } else {
-            println!("Failed to acquire MIDI port");
-        }
-
-        app.insert_resource(Midi {
-            output_handle: handle,
+        app.insert_resource(MidiHandle(None));
+        app.insert_resource(MidiConfig {
+            active_port: String::new(),
+            port_watcher: MidiOutput::new("port_watcher").unwrap(),
         });
         app.add_event::<MidiOutputEvent>();
-        app.add_systems(Update, process_output_events);
+        app.add_systems(Startup, connect_to_default_output_port);
+        app.add_systems(Update, (process_output_events, update_midi_connection));
+    }
+}
+
+pub struct Port {
+    pub name: String,
+    pub port: MidiOutputPort,
+}
+
+struct MidiConnection {
+    pub connection: MidiOutputConnection,
+    pub port_name: String,
+}
+
+impl Drop for MidiConnection {
+    fn drop(&mut self) {
+        let _ = self.connection.send(&[CC, PANIC, 0]);
     }
 }
 
 #[derive(Resource)]
-struct Midi {
-    output_handle: Option<MidiOutputConnection>,
+struct MidiHandle(Option<MidiConnection>);
+
+impl MidiHandle {
+    pub fn connect_to(&mut self, port: &Port) {
+        let output = MidiOutput::new("Output").unwrap();
+        if let Ok(connection) = output.connect(&port.port, "Connection") {
+            self.0 = Some(MidiConnection {
+                connection,
+                port_name: port.name.clone(),
+            });
+            println!("Connected to {}", port.name);
+        } else {
+            println!("Failed to connect to {}", port.name)
+        }
+    }
 }
 
-impl Drop for Midi {
-    fn drop(&mut self) {
-        if let Some(midi_output) = &mut self.output_handle {
-            let _ = midi_output.send(&[CC, PANIC, 0]);
+#[derive(Resource)]
+pub struct MidiConfig {
+    pub active_port: String,
+    port_watcher: MidiOutput,
+}
+
+impl MidiConfig {
+    pub fn get_ports(&self) -> Vec<Port> {
+        let mut ports = Vec::new();
+        for port in self.port_watcher.ports() {
+            if let Ok(name) = self.port_watcher.port_name(&port) {
+                ports.push(Port { port, name });
+            }
         }
+
+        ports
+    }
+}
+
+fn connect_to_default_output_port(mut midi: ResMut<MidiHandle>, mut config: ResMut<MidiConfig>) {
+    let ports = config.get_ports();
+    if let Some(default_port) = ports.get(0) {
+        midi.connect_to(&default_port);
+        config.active_port = default_port.name.clone();
+    } else {
+        config.active_port = String::new();
+        println!("No MIDI ports available");
+    }
+}
+
+fn update_midi_connection(config: Res<MidiConfig>, mut handle: ResMut<MidiHandle>) {
+    if config.active_port.is_empty() {
+        return;
+    }
+
+    if let Some(connection) = &mut handle.0 {
+        if connection.port_name != config.active_port {
+            if let Some(port) = config
+                .get_ports()
+                .iter()
+                .find(|port| port.name == config.active_port)
+            {
+                handle.connect_to(port);
+            }
+        }
+    } else {
+        println!(
+            "No current connection, connecting to port {}",
+            config.active_port
+        );
     }
 }
 
@@ -137,19 +194,24 @@ pub enum MidiOutputEvent {
     },
 }
 
-fn process_output_events(mut events: EventReader<MidiOutputEvent>, mut midi: ResMut<Midi>) {
+fn process_output_events(mut events: EventReader<MidiOutputEvent>, mut midi: ResMut<MidiHandle>) {
     for event in events.read() {
-        if let Some(output) = &mut midi.output_handle {
+        if let Some(handle) = &mut midi.0 {
             match event {
                 MidiOutputEvent::NoteOn {
                     note,
                     octave,
                     velocity,
                 } => {
-                    let _ = output.send(&[NOTE_ON_MSG, note.to_value(*octave), *velocity]);
+                    let _ =
+                        handle
+                            .connection
+                            .send(&[NOTE_ON_MSG, note.to_value(*octave), *velocity]);
                 }
                 MidiOutputEvent::NoteOff { note, octave } => {
-                    let _ = output.send(&[NOTE_OFF_MSG, note.to_value(*octave), 0x7F]);
+                    let _ = handle
+                        .connection
+                        .send(&[NOTE_OFF_MSG, note.to_value(*octave), 0x7F]);
                 }
             }
         }
