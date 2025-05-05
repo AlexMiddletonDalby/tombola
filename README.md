@@ -1,9 +1,11 @@
 # Tombola
 
+https://github.com/user-attachments/assets/eb679eab-f147-4f18-919c-abf0f4006b7a
+
 Physics sequencer for external MIDI devices built in Bevy, inspired by
 the [tombola sequencer mode on the Teenage Engineering OP-1](https://youtu.be/SHoDUCAd4-I?si=-XzA_HOYTEwAPaGe)
 
-I build this for fun, mostly as a learning exercise and a proof of concept for a bigger sequencer project I'm working
+I built this for fun, mostly as a learning exercise and a proof of concept for a bigger sequencer project I'm working
 on (watch this space), but feel free to clone it and have a play!
 
 ## Building
@@ -12,7 +14,7 @@ Tombola is built in rust using [Bevy](https://bevyengine.org), with [Avian](http
 physics, [bevy_egui](https://github.com/vladbat00/bevy_egui) for menus and [midir](https://docs.rs/midir/latest/midir/)
 for midi handling.
 
-Simply pull the project and
+Simply clone the project and
 use [cargo](https://doc.rust-lang.org/book/ch01-03-hello-cargo.html#building-and-running-a-cargo-project) to build.
 
 ## Controls
@@ -33,16 +35,15 @@ use [cargo](https://doc.rust-lang.org/book/ch01-03-hello-cargo.html#building-and
     - Medium: MIDI octave 3
     - Large: MIDI octave 2
 - Each pad in the spinning tombola is assigned a note. When a ball hits the pad, it will send the corresponding MIDI
-  note. By default,
-  the velocity of the MIDI note is determined by the speed at which the ball hits the pad.
+  note. By default, the velocity of the MIDI note is determined by the speed at which the ball hits the pad
 - Use the 'World' section of the settings menu to adjust the parameters of the simulation, including gravity,
-  bounciness, and the shape and spin of the tombola.
+  bounciness, and the shape and spin of the tombola
 - Use the 'MIDI' section of the settings menu to choose which notes are assigned to tombola pads, and tweak other
   settings about how notes are triggered
 
 ## Future development
 
-As this was build mostly for fun, I may or may not continue to add things. Here's a short list of things I'd still like
+As this was built mostly for fun, I may or may not continue to add things. Here's a short list of things I'd still like
 to do:
 
 - Upgrade to Bevy 16
