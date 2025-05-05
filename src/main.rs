@@ -49,7 +49,13 @@ fn main() {
 
     App::new()
         .add_plugins((
-            DefaultPlugins,
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Tombola".to_string(),
+                    ..default()
+                }),
+                ..default()
+            }),
             PhysicsPlugins::default(),
             EguiPlugin,
             MidiPlugin,
