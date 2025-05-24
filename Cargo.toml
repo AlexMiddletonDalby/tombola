@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = "0.15.1"
-avian2d = "0.2.1"
-bevy_egui = "0.33.0"
+bevy = "0.16.0"
+avian2d = "0.3.0"
+bevy_egui = "0.34.1"
 midir = "0.10.1"
 strum = "0.27.1"
 strum_macros = "0.27.1"

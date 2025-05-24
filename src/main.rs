@@ -57,7 +57,9 @@ fn main() {
                 ..default()
             }),
             PhysicsPlugins::default(),
-            EguiPlugin,
+            EguiPlugin {
+                enable_multipass_for_primary_context: false,
+            },
             MidiPlugin,
             TombolaPlugin,
         ))
@@ -123,7 +125,7 @@ fn spawn_ball_selectors(
     mut materials: ResMut<Assets<ColorMaterial>>,
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
-    let x_pos = get_ball_selector_x(window.single());
+    let x_pos = get_ball_selector_x(window.single().unwrap());
 
     commands.spawn(HighlightBundle::new(
         Vec2::new(x_pos, 100.0),
@@ -172,8 +174,8 @@ fn update_world_mouse(
     window: Query<&Window, With<PrimaryWindow>>,
     camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
 ) {
-    let (camera, camera_transform) = camera.single();
-    if let Ok(window) = window.get_single() {
+    let (camera, camera_transform) = camera.single().unwrap();
+    if let Ok(window) = window.single() {
         if let Some(cursor_pos) = window.cursor_position() {
             if let Ok(world_pos) = camera.viewport_to_world(camera_transform, cursor_pos) {
                 world_mouse.position = world_pos.origin.truncate();
@@ -186,7 +188,7 @@ fn update_selector_positions(
     mut selectors: Query<&mut Transform, With<BallSelector>>,
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
-    let x_pos = get_ball_selector_x(window.single());
+    let x_pos = get_ball_selector_x(window.single().unwrap());
 
     for mut selector in selectors.iter_mut() {
         selector.translation.x = x_pos;
@@ -198,7 +200,7 @@ fn update_highlight(
     selectors: Query<(&BallSelector, &Transform), Without<Highlight>>,
     selected_ball: Res<SelectedBall>,
 ) {
-    if let Ok(mut highlight) = highlight.get_single_mut() {
+    if let Ok(mut highlight) = highlight.single_mut() {
         if let Some(pos) =
             ui::find_selector_position(&selectors.iter().collect(), selected_ball.size)
         {
@@ -213,7 +215,7 @@ fn update_cursor_position(
     world_mouse: Res<WorldMouse>,
     drag_state: Res<DragState>,
 ) {
-    if let Ok(mut cursor) = cursors.get_single_mut() {
+    if let Ok(mut cursor) = cursors.single_mut() {
         if let DragState::Dragging(pos) = *drag_state {
             cursor.translation.x = pos.x;
             cursor.translation.y = pos.y;
@@ -231,8 +233,8 @@ fn update_cursor_visibility(
     selectors: Query<(&BallSelector, &Transform)>,
     mut egui: EguiContexts,
 ) {
-    if let Ok(window) = window.get_single() {
-        if let Ok(mut cursor_visibility) = cursors.get_single_mut() {
+    if let Ok(window) = window.single() {
+        if let Ok(mut cursor_visibility) = cursors.single_mut() {
             let is_over_ui = egui.ctx_mut().is_pointer_over_area();
             let is_off_screen = window.cursor_position().is_none();
             let is_over_selector =
@@ -257,7 +259,7 @@ fn update_cursor_size(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    if let Ok((mut cursor, mut mesh, mut material)) = cursors.get_single_mut() {
+    if let Ok((mut cursor, mut mesh, mut material)) = cursors.single_mut() {
         cursor.size = selected_ball.size;
         *mesh = cursor.get_mesh(&mut meshes);
         *material = cursor.get_material(&mut materials);
@@ -392,7 +394,7 @@ fn clean_up_balls(
     window: Query<&Window, With<PrimaryWindow>>,
     settings: Res<Settings>,
 ) {
-    let window = window.single();
+    let window = window.single().unwrap();
     let half_width = window.width() / 2.0;
     let half_height = window.height() / 2.0;
     let rect = Rect::new(-half_width, -half_height, half_width, half_height);
