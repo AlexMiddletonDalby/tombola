@@ -6,7 +6,7 @@ use crate::pad::{Pad, PadBundle};
 use crate::settings::Settings;
 use avian2d::math::PI;
 use avian2d::prelude::{
-    AngularVelocity, CollisionEventsEnabled, CollisionStarted, LinearVelocity, RigidBody,
+    AngularVelocity, CollisionEventsEnabled, LinearVelocity, OnCollisionStart, RigidBody,
 };
 use bevy::math::ops::tan;
 use bevy::prelude::*;
@@ -23,7 +23,6 @@ impl Plugin for TombolaPlugin {
                 update_tombola_shape,
                 update_tombola_notes.after(update_tombola_shape),
                 update_tombola_spin,
-                handle_pad_collisions,
                 fade_pads,
                 note_off_pads,
             ),
@@ -43,7 +42,7 @@ fn spawn_tombola(
     shape: geometry::Shape,
     spin: f32,
     bounciness: f32,
-    notes: &Vec<midi::Note>,
+    notes: &Vec<Note>,
 ) {
     const THICKNESS: f32 = 5.0;
     const APOTHEM: f32 = 225.0;
@@ -63,20 +62,73 @@ fn spawn_tombola(
         .with_children(|commands| {
             let transforms = shape.get_side_transforms(position, APOTHEM);
             for (index, transform) in transforms.into_iter().enumerate() {
-                commands.spawn((
-                    PadBundle::new(
-                        index,
-                        Vec2::new(size.x + (THICKNESS / 2.0), size.y),
-                        transform,
-                        notes[index],
-                        bounciness,
-                        &mut meshes,
-                        &mut materials,
-                    ),
-                    CollisionEventsEnabled,
-                ));
+                commands
+                    .spawn((
+                        PadBundle::new(
+                            index,
+                            Vec2::new(size.x + (THICKNESS / 2.0), size.y),
+                            transform,
+                            notes[index],
+                            bounciness,
+                            &mut meshes,
+                            &mut materials,
+                        ),
+                        CollisionEventsEnabled,
+                    ))
+                    .observe(on_pad_collision);
             }
         });
+}
+
+fn on_pad_collision(
+    trigger: Trigger<OnCollisionStart>,
+    mut pads: Query<&mut Pad>,
+    mut balls: Query<(&mut Ball, &LinearVelocity)>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    settings: Res<Settings>,
+    mut midi: EventWriter<MidiOutputEvent>,
+) {
+    let target = trigger.target();
+    let collider = trigger.collider;
+
+    if let Ok(mut pad) = pads.get_mut(target) {
+        if let Ok((mut ball, velocity)) = balls.get_mut(collider) {
+            if pad.playing_notes.contains_key(&ball.size.to_octave()) {
+                midi.write(MidiOutputEvent::NoteOff {
+                    note: pad.note,
+                    octave: ball.size.to_octave(),
+                });
+            }
+
+            midi.write(MidiOutputEvent::NoteOn {
+                note: pad.note,
+                octave: ball.size.to_octave(),
+                velocity: if settings.midi.fixed_note_velocity.enabled {
+                    settings.midi.fixed_note_velocity.value
+                } else {
+                    midi::to_velocity(velocity.length())
+                },
+            });
+
+            pad.playing_notes.insert(
+                ball.size.to_octave(),
+                Timer::new(
+                    if settings.midi.fixed_note_length.enabled {
+                        Duration::from_millis(settings.midi.fixed_note_length.value)
+                    } else {
+                        midi::to_note_duration(velocity.length())
+                    },
+                    TimerMode::Once,
+                ),
+            );
+
+            if let Some(material) = materials.get_mut(pad.material.0.id()) {
+                material.color = Pad::hit_color();
+            }
+
+            ball.bounces += 1;
+        }
+    }
 }
 
 fn spawn_default_tombola(
@@ -94,86 +146,6 @@ fn spawn_default_tombola(
         settings.world.bounciness,
         &settings.midi.tombola_notes,
     );
-}
-
-fn collide(
-    pad: &mut Pad,
-    ball: &mut Ball,
-    ball_velocity: &LinearVelocity,
-    midi: &mut EventWriter<MidiOutputEvent>,
-    materials: &mut Assets<ColorMaterial>,
-    settings: &Settings,
-) {
-    if pad.playing_notes.contains_key(&ball.size.to_octave()) {
-        midi.write(MidiOutputEvent::NoteOff {
-            note: pad.note,
-            octave: ball.size.to_octave(),
-        });
-    }
-
-    midi.write(MidiOutputEvent::NoteOn {
-        note: pad.note,
-        octave: ball.size.to_octave(),
-        velocity: if settings.midi.fixed_note_velocity.enabled {
-            settings.midi.fixed_note_velocity.value
-        } else {
-            midi::to_velocity(ball_velocity.length())
-        },
-    });
-
-    pad.playing_notes.insert(
-        ball.size.to_octave(),
-        Timer::new(
-            if settings.midi.fixed_note_length.enabled {
-                Duration::from_millis(settings.midi.fixed_note_length.value)
-            } else {
-                midi::to_note_duration(ball_velocity.length())
-            },
-            TimerMode::Once,
-        ),
-    );
-
-    if let Some(material) = materials.get_mut(pad.material.0.id()) {
-        material.color = Pad::hit_color();
-    }
-
-    ball.bounces += 1;
-}
-
-fn handle_pad_collisions(
-    mut collisions: EventReader<CollisionStarted>,
-    mut midi: EventWriter<MidiOutputEvent>,
-    mut pads: Query<&mut Pad>,
-    mut balls: Query<(&mut Ball, &LinearVelocity)>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    settings: Res<Settings>,
-) {
-    for CollisionStarted(entity1, entity2) in collisions.read() {
-        if let Ok(mut pad) = pads.get_mut(*entity1) {
-            if let Ok((mut ball, velocity)) = balls.get_mut(*entity2) {
-                collide(
-                    &mut pad,
-                    &mut ball,
-                    velocity,
-                    &mut midi,
-                    &mut materials,
-                    &settings,
-                );
-            }
-        }
-        if let Ok(mut pad) = pads.get_mut(*entity2) {
-            if let Ok((mut ball, velocity)) = balls.get_mut(*entity1) {
-                collide(
-                    &mut pad,
-                    &mut ball,
-                    velocity,
-                    &mut midi,
-                    &mut materials,
-                    &settings,
-                );
-            }
-        }
-    }
 }
 
 fn update_tombola_shape(
