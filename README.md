@@ -46,7 +46,6 @@ use [cargo](https://doc.rust-lang.org/book/ch01-03-hello-cargo.html#building-and
 As this was built mostly for fun, I may or may not continue to add things. Here's a short list of things I'd still like
 to do:
 
-- Upgrade to Bevy 16
 - Add a basic built-in synth to remove the external MIDI device requirement
 - Add CLAP/VST plugin hosting to allow you to bring your own soft-synth
 - Improve MIDI velocity calculations, as these are currently quite crude
