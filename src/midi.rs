@@ -1,6 +1,11 @@
 use bevy::prelude::*;
-use midir::{MidiOutput, MidiOutputConnection, MidiOutputPort};
-use std::time::Duration;
+use midir::{MidiOutput, MidiOutputConnection};
+use std::{
+    fmt,
+    sync::mpsc,
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 use strum_macros::EnumIter;
 
 const NOTE_ON_MSG: u8 = 0x90;
@@ -22,104 +27,179 @@ const A_SHARP3: u8 = 0x46;
 const B3: u8 = 0x47;
 
 pub struct MidiPlugin;
-
 impl Plugin for MidiPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(MidiHandle(None));
-        app.insert_resource(MidiConfig {
-            active_port: String::new(),
-            port_watcher: MidiOutput::new("port_watcher").unwrap(),
-        });
         app.add_event::<MidiOutputEvent>();
-        app.add_systems(Startup, connect_to_default_output_port);
-        app.add_systems(Update, (process_output_events, update_midi_connection));
+        app.add_systems(
+            Startup,
+            (
+                start_midi_thread,
+                connect_to_first_available_midi_port.after(start_midi_thread),
+            ),
+        );
+        app.add_systems(
+            Update,
+            (
+                process_output_events,
+                update_connection,
+                terminate_midi_thread_if_app_exiting,
+            ),
+        );
     }
 }
 
+#[derive(Resource)]
+pub struct Midi {
+    thread: Option<JoinHandle<()>>,
+    tx: mpsc::Sender<Action>,
+    connected_port: Option<Port>,
+    selected_port: Option<Port>,
+}
+
+impl Midi {
+    pub fn get_available_ports(&self) -> Vec<Port> {
+        let mut ports = Vec::new();
+
+        let midi_out =
+            MidiOutput::new("midir test output").expect("Should be able to create midi out");
+
+        for port in midi_out.ports() {
+            if let Ok(name) = midi_out.port_name(&port) {
+                ports.push(Port {
+                    name,
+                    id: port.id(),
+                });
+            }
+        }
+
+        return ports;
+    }
+
+    pub fn get_port(&self) -> Option<Port> {
+        return self.selected_port.clone();
+    }
+
+    pub fn set_port(&mut self, port: Port) {
+        self.selected_port = Some(port);
+    }
+}
+
+pub enum Action {
+    ConnectToPort(Port),
+    ClearConnection,
+    SendMidiOutputEvent(MidiOutputEvent),
+    SendMidiPanicEvent,
+}
+
+fn start_midi_thread(mut commands: Commands) {
+    let (midi_tx, midi_rx): (mpsc::Sender<Action>, mpsc::Receiver<Action>) = mpsc::channel();
+
+    commands.insert_resource(Midi {
+        thread: Some(thread::spawn(move || midi_thread_process(midi_rx))),
+        tx: midi_tx.clone(),
+        connected_port: None,
+        selected_port: None,
+    });
+}
+
+fn midi_thread_process(rx: mpsc::Receiver<Action>) {
+    let mut connection: Option<MidiOutputConnection> = None;
+
+    for event in rx.iter() {
+        match event {
+            Action::ConnectToPort(port) => {
+                println!("Attempting to connenct to midi port with id: {}", port.id);
+                let midi_out = MidiOutput::new("My Test Output")
+                    .expect("Should be able to make an output object");
+
+                let out_ports = midi_out.ports();
+                if let Some(midi_port) = out_ports.iter().find(|p| p.id() == port.id) {
+                    connection = Some(
+                        midi_out
+                            .connect(midi_port, "my_port")
+                            .expect("Should be able to connect to the port"),
+                    );
+                    println!("Successfully connected to: {}", port.name);
+                } else {
+                    println!("Error: requested port is not available");
+                    connection = None;
+                }
+            }
+            Action::ClearConnection => {
+                connection = None;
+            }
+            Action::SendMidiOutputEvent(output_event) => {
+                if let Some(conn) = &mut connection {
+                    match output_event {
+                        MidiOutputEvent::NoteOn {
+                            note,
+                            octave,
+                            velocity,
+                        } => {
+                            let _ = conn.send(&[NOTE_ON_MSG, note.to_value(octave), velocity]);
+                        }
+                        MidiOutputEvent::NoteOff { note, octave } => {
+                            let _ = conn.send(&[NOTE_OFF_MSG, note.to_value(octave), 0x7F]);
+                        }
+                    }
+                }
+            }
+            Action::SendMidiPanicEvent => {
+                if let Some(conn) = &mut connection {
+                    let _ = conn.send(&[CC, PANIC, 0]);
+                }
+            }
+        }
+    }
+}
+
+fn connect_to_first_available_midi_port(mut midi: ResMut<Midi>) {
+    let ports = midi.get_available_ports();
+    if let Some(default_port) = ports.get(0) {
+        let _ = midi.tx.send(Action::ConnectToPort(default_port.clone()));
+        midi.connected_port = Some(default_port.clone());
+        midi.selected_port = Some(default_port.clone());
+    } else {
+        let _ = midi.tx.send(Action::ClearConnection);
+        midi.connected_port = None;
+        midi.selected_port = None;
+    }
+}
+
+fn update_connection(mut midi: ResMut<Midi>) {
+    if let Some(selected_port) = midi.selected_port.clone() {
+        if midi.get_available_ports().contains(&selected_port) {
+            if midi.selected_port != midi.connected_port {
+                let _ = midi.tx.send(Action::ConnectToPort(selected_port.clone()));
+                midi.connected_port = Some(selected_port.clone());
+            }
+        } else {
+            connect_to_first_available_midi_port(midi);
+        }
+    }
+}
+
+fn terminate_midi_thread_if_app_exiting(
+    mut midi: ResMut<Midi>,
+    mut exit_events: EventReader<AppExit>,
+) {
+    for _ in exit_events.read() {
+        let _ = midi.tx.send(Action::SendMidiPanicEvent);
+        if let Some(handle) = midi.thread.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct Port {
     pub name: String,
-    pub port: MidiOutputPort,
+    pub id: String,
 }
 
-struct MidiConnection {
-    pub connection: MidiOutputConnection,
-    pub port_name: String,
-}
-
-impl Drop for MidiConnection {
-    fn drop(&mut self) {
-        let _ = self.connection.send(&[CC, PANIC, 0]);
-    }
-}
-
-#[derive(Resource)]
-struct MidiHandle(Option<MidiConnection>);
-
-impl MidiHandle {
-    pub fn connect_to(&mut self, port: &Port) {
-        let output = MidiOutput::new("Output").unwrap();
-        if let Ok(connection) = output.connect(&port.port, "Connection") {
-            self.0 = Some(MidiConnection {
-                connection,
-                port_name: port.name.clone(),
-            });
-            println!("Connected to {}", port.name);
-        } else {
-            println!("Failed to connect to {}", port.name)
-        }
-    }
-}
-
-#[derive(Resource)]
-pub struct MidiConfig {
-    pub active_port: String,
-    port_watcher: MidiOutput,
-}
-
-impl MidiConfig {
-    pub fn get_ports(&self) -> Vec<Port> {
-        let mut ports = Vec::new();
-        for port in self.port_watcher.ports() {
-            if let Ok(name) = self.port_watcher.port_name(&port) {
-                ports.push(Port { port, name });
-            }
-        }
-
-        ports
-    }
-}
-
-fn connect_to_default_output_port(mut midi: ResMut<MidiHandle>, mut config: ResMut<MidiConfig>) {
-    let ports = config.get_ports();
-    if let Some(default_port) = ports.get(0) {
-        midi.connect_to(&default_port);
-        config.active_port = default_port.name.clone();
-    } else {
-        config.active_port = String::new();
-        println!("No MIDI ports available");
-    }
-}
-
-fn update_midi_connection(config: Res<MidiConfig>, mut handle: ResMut<MidiHandle>) {
-    if config.active_port.is_empty() {
-        return;
-    }
-
-    if let Some(connection) = &mut handle.0 {
-        if connection.port_name != config.active_port {
-            if let Some(port) = config
-                .get_ports()
-                .iter()
-                .find(|port| port.name == config.active_port)
-            {
-                handle.connect_to(port);
-            }
-        }
-    } else {
-        println!(
-            "No current connection, connecting to port {}",
-            config.active_port
-        );
+impl fmt::Display for Port {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)
     }
 }
 
@@ -181,7 +261,7 @@ impl Note {
     }
 }
 
-#[derive(Event)]
+#[derive(Event, Clone)]
 pub enum MidiOutputEvent {
     NoteOn {
         note: Note,
@@ -194,27 +274,9 @@ pub enum MidiOutputEvent {
     },
 }
 
-fn process_output_events(mut events: EventReader<MidiOutputEvent>, mut midi: ResMut<MidiHandle>) {
+fn process_output_events(mut events: EventReader<MidiOutputEvent>, midi: ResMut<Midi>) {
     for event in events.read() {
-        if let Some(handle) = &mut midi.0 {
-            match event {
-                MidiOutputEvent::NoteOn {
-                    note,
-                    octave,
-                    velocity,
-                } => {
-                    let _ =
-                        handle
-                            .connection
-                            .send(&[NOTE_ON_MSG, note.to_value(*octave), *velocity]);
-                }
-                MidiOutputEvent::NoteOff { note, octave } => {
-                    let _ = handle
-                        .connection
-                        .send(&[NOTE_OFF_MSG, note.to_value(*octave), 0x7F]);
-                }
-            }
-        }
+        let _ = midi.tx.send(Action::SendMidiOutputEvent(event.clone()));
     }
 }
 

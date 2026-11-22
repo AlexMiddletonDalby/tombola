@@ -161,7 +161,7 @@ pub fn pick_selector(selectors: &Vec<(&BallSelector, &Transform)>, pos: Vec2) ->
 pub fn show_settings_menu(
     mut egui: EguiContexts,
     settings: &mut Settings,
-    midi_config: &mut midi::MidiConfig,
+    midi: &mut midi::Midi,
 ) -> bool {
     if let Some(ctx) = egui.try_ctx_mut() {
         egui::Window::new("Settings")
@@ -218,19 +218,33 @@ pub fn show_settings_menu(
                 });
                 ui.collapsing("MIDI", |ui| {
                     ui.label("Device");
-                    let ports = midi_config.get_ports();
+                    let ports = midi.get_available_ports();
                     if !ports.is_empty() {
+                        let mut selected_port_name = if let Some(port) = midi.get_port() {
+                            port.name
+                        } else {
+                            "-".to_string()
+                        };
+
                         egui::ComboBox::from_id_salt("midi_ports")
-                            .selected_text(midi_config.active_port.clone())
+                            .selected_text(selected_port_name.clone())
                             .show_ui(ui, |ui| {
-                                for port in midi_config.get_ports() {
+                                for port in midi.get_available_ports() {
                                     ui.selectable_value(
-                                        &mut midi_config.active_port,
+                                        &mut selected_port_name,
                                         port.name.clone(),
                                         port.name,
                                     );
                                 }
                             });
+
+                        if let Some(found_port) =
+                            ports.iter().find(|p| p.name == selected_port_name)
+                        {
+                            if midi.get_port() != Some(found_port.clone()) {
+                                midi.set_port(found_port.clone());
+                            }
+                        }
                     } else {
                         ui.label("No midi ports detected");
                     }
