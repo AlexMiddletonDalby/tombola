@@ -1,4 +1,3 @@
-use avian2d::math::PI;
 use bevy::math::ops::{cos, sin};
 use bevy::math::{Quat, Vec2};
 use bevy::prelude::Transform;
@@ -62,7 +61,7 @@ pub fn polygon(centre: Vec2, apothem: f32, num_sides: usize) -> Vec<Transform> {
         return Vec::new();
     }
 
-    let angle_increment = 2.0 * PI / num_sides as f32;
+    let angle_increment = 2.0 * core::f32::consts::PI / num_sides as f32;
 
     for i in 0..num_sides {
         let angle = i as f32 * angle_increment;

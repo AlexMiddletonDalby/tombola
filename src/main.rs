@@ -12,11 +12,12 @@ use crate::tombola::TombolaPlugin;
 use crate::ui::CursorBundle;
 use avian2d::prelude::*;
 use ball::{Ball, BallBundle};
-use bevy::core_pipeline::bloom::Bloom;
+use bevy::camera::Hdr;
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
+use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use bevy_egui::{EguiContexts, EguiPlugin, EguiPreUpdateSet};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use midi::MidiPlugin;
 use settings::Settings;
 use size::Size;
@@ -57,9 +58,7 @@ fn main() {
                 ..default()
             }),
             PhysicsPlugins::default(),
-            EguiPlugin {
-                enable_multipass_for_primary_context: false,
-            },
+            EguiPlugin { ..default() },
             MidiPlugin,
             TombolaPlugin,
         ))
@@ -75,7 +74,7 @@ fn main() {
             Update,
             (
                 update_world_mouse,
-                handle_click.after(EguiPreUpdateSet::InitContexts),
+                handle_click,
                 handle_scroll,
                 update_selector_positions,
                 update_highlight.after(update_selector_positions),
@@ -88,6 +87,7 @@ fn main() {
                 update_bounciness,
             ),
         )
+        .add_systems(EguiPrimaryContextPass, show_settings_menu)
         .insert_resource(ClearColor(Color::linear_rgb(0.0, 0.0, 0.0)))
         .insert_resource(Gravity(get_gravity(settings.world.gravity)))
         .insert_resource(WorldMouse {
@@ -104,13 +104,11 @@ struct MainCamera;
 
 fn setup_camera(mut commands: Commands) {
     commands.spawn((
-        Camera {
-            hdr: true,
-            ..default()
-        },
         Camera2d,
+        Camera { ..default() },
         Bloom::OLD_SCHOOL,
         MainCamera,
+        Hdr,
     ));
 }
 
@@ -235,16 +233,19 @@ fn update_cursor_visibility(
 ) {
     if let Ok(window) = window.single() {
         if let Ok(mut cursor_visibility) = cursors.single_mut() {
-            let is_over_ui = egui.ctx_mut().is_pointer_over_area();
-            let is_off_screen = window.cursor_position().is_none();
-            let is_over_selector =
-                ui::pick_selector(&selectors.iter().collect(), world_mouse.position).is_some();
+            *cursor_visibility = Visibility::Visible;
+            if let Ok(ctx) = egui.ctx_mut() {
+                let is_over_ui = ctx.is_pointer_over_egui();
+                let is_off_screen = window.cursor_position().is_none();
+                let is_over_selector =
+                    ui::pick_selector(&selectors.iter().collect(), world_mouse.position).is_some();
 
-            *cursor_visibility = if is_over_ui || is_off_screen || is_over_selector {
-                Visibility::Hidden
-            } else {
-                Visibility::Visible
-            };
+                *cursor_visibility = if is_over_ui || is_off_screen || is_over_selector {
+                    Visibility::Hidden
+                } else {
+                    Visibility::Visible
+                };
+            }
         }
     }
 }
@@ -278,21 +279,13 @@ fn handle_click(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut selected_ball: ResMut<SelectedBall>,
-    mut settings: ResMut<Settings>,
-    mut midi: ResMut<Midi>,
     mut drag_state: ResMut<DragState>,
+    settings: ResMut<Settings>,
     world_mouse: Res<WorldMouse>,
     buttons: Res<ButtonInput<MouseButton>>,
     selectors: Query<(&BallSelector, &Transform)>,
     balls: Query<(Entity, &Ball)>,
-    egui: EguiContexts,
 ) {
-    let handled = ui::show_settings_menu(egui, settings.as_mut(), midi.as_mut());
-    if handled {
-        *drag_state = DragState::NotDragging;
-        return;
-    }
-
     if buttons.just_pressed(MouseButton::Right) {
         for (entity, _ball) in balls.iter() {
             commands.entity(entity).despawn();
@@ -327,7 +320,7 @@ fn handle_click(
     }
 }
 
-fn handle_scroll(mut scrolls: EventReader<MouseWheel>, mut selected_ball: ResMut<SelectedBall>) {
+fn handle_scroll(mut scrolls: MessageReader<MouseWheel>, mut selected_ball: ResMut<SelectedBall>) {
     for event in scrolls.read() {
         match event.unit {
             MouseScrollUnit::Line => {
@@ -415,4 +408,18 @@ fn clean_up_balls(
             commands,
         );
     }
+}
+
+fn show_settings_menu(
+    mut contexts: EguiContexts,
+    mut settings: ResMut<Settings>,
+    mut midi: ResMut<Midi>,
+    mut drag_state: ResMut<DragState>,
+) -> Result {
+    let handled = ui::show_settings_menu(&mut contexts, settings.as_mut(), midi.as_mut())?;
+    if handled {
+        *drag_state = DragState::NotDragging;
+    }
+
+    Ok(())
 }

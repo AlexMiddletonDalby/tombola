@@ -7,7 +7,7 @@ use bevy::asset::Assets;
 use bevy::color::Color;
 use bevy::math::{Rect, Vec2};
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts};
+use bevy_egui::{EguiContexts, egui};
 use strum::IntoEnumIterator;
 
 #[derive(Component)]
@@ -159,140 +159,129 @@ pub fn pick_selector(selectors: &Vec<(&BallSelector, &Transform)>, pos: Vec2) ->
 }
 
 pub fn show_settings_menu(
-    mut egui: EguiContexts,
+    egui: &mut EguiContexts,
     settings: &mut Settings,
     midi: &mut midi::Midi,
-) -> bool {
-    if let Some(ctx) = egui.try_ctx_mut() {
-        egui::Window::new("Settings")
-            .default_open(false)
-            .show(ctx, |ui| {
-                ui.collapsing("World", |ui| {
-                    ui.label("Shape");
-                    egui::ComboBox::from_id_salt("shape")
-                        .selected_text(settings.world.tombola_shape.to_string())
+) -> Result<bool> {
+    egui::Window::new("Settings")
+        .default_open(false)
+        .show(egui.ctx_mut()?, |ui| {
+            ui.collapsing("World", |ui| {
+                ui.label("Shape");
+                egui::ComboBox::from_id_salt("shape")
+                    .selected_text(settings.world.tombola_shape.to_string())
+                    .show_ui(ui, |ui| {
+                        for shape in Shape::iter() {
+                            ui.selectable_value(
+                                &mut settings.world.tombola_shape,
+                                shape,
+                                shape.to_string(),
+                            );
+                        }
+                    });
+                ui.add_space(10.0);
+
+                ui.add(
+                    egui::Slider::new(&mut settings.world.tombola_spin, -2.0..=2.0).text("Spin"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut settings.world.bounciness, 0.0..=1.0)
+                        .text("Bounciness")
+                        .fixed_decimals(2),
+                );
+                ui.add(
+                    egui::Slider::new(&mut settings.world.gravity, 0.0..=1.5)
+                        .text("Gravity")
+                        .fixed_decimals(2),
+                );
+
+                ui.checkbox(&mut settings.world.max_balls.enabled, "Max Balls");
+                if settings.world.max_balls.enabled {
+                    ui.add(egui::Slider::new(
+                        &mut settings.world.max_balls.limit,
+                        1..=20,
+                    ));
+                }
+
+                ui.checkbox(
+                    &mut settings.world.max_bounces.enabled,
+                    "Max Bounces per Ball",
+                );
+                if settings.world.max_bounces.enabled {
+                    ui.add(egui::Slider::new(
+                        &mut settings.world.max_bounces.limit,
+                        1..=10,
+                    ));
+                }
+            });
+            ui.collapsing("MIDI", |ui| {
+                ui.label("Device");
+                let ports = midi.get_available_ports();
+                if !ports.is_empty() {
+                    let mut selected_port_name = if let Some(port) = midi.get_port() {
+                        port.name
+                    } else {
+                        "-".to_string()
+                    };
+
+                    egui::ComboBox::from_id_salt("midi_ports")
+                        .selected_text(selected_port_name.clone())
                         .show_ui(ui, |ui| {
-                            for shape in Shape::iter() {
+                            for port in midi.get_available_ports() {
                                 ui.selectable_value(
-                                    &mut settings.world.tombola_shape,
-                                    shape,
-                                    shape.to_string(),
+                                    &mut selected_port_name,
+                                    port.name.clone(),
+                                    port.name,
                                 );
                             }
                         });
-                    ui.add_space(10.0);
 
-                    ui.add(
-                        egui::Slider::new(&mut settings.world.tombola_spin, -2.0..=2.0)
-                            .text("Spin"),
-                    );
-                    ui.add(
-                        egui::Slider::new(&mut settings.world.bounciness, 0.0..=1.0)
-                            .text("Bounciness")
-                            .fixed_decimals(2),
-                    );
-                    ui.add(
-                        egui::Slider::new(&mut settings.world.gravity, 0.0..=1.5)
-                            .text("Gravity")
-                            .fixed_decimals(2),
-                    );
-
-                    ui.checkbox(&mut settings.world.max_balls.enabled, "Max Balls");
-                    if settings.world.max_balls.enabled {
-                        ui.add(egui::Slider::new(
-                            &mut settings.world.max_balls.limit,
-                            1..=20,
-                        ));
-                    }
-
-                    ui.checkbox(
-                        &mut settings.world.max_bounces.enabled,
-                        "Max Bounces per Ball",
-                    );
-                    if settings.world.max_bounces.enabled {
-                        ui.add(egui::Slider::new(
-                            &mut settings.world.max_bounces.limit,
-                            1..=10,
-                        ));
-                    }
-                });
-                ui.collapsing("MIDI", |ui| {
-                    ui.label("Device");
-                    let ports = midi.get_available_ports();
-                    if !ports.is_empty() {
-                        let mut selected_port_name = if let Some(port) = midi.get_port() {
-                            port.name
-                        } else {
-                            "-".to_string()
-                        };
-
-                        egui::ComboBox::from_id_salt("midi_ports")
-                            .selected_text(selected_port_name.clone())
-                            .show_ui(ui, |ui| {
-                                for port in midi.get_available_ports() {
-                                    ui.selectable_value(
-                                        &mut selected_port_name,
-                                        port.name.clone(),
-                                        port.name,
-                                    );
-                                }
-                            });
-
-                        if let Some(found_port) =
-                            ports.iter().find(|p| p.name == selected_port_name)
-                        {
-                            if midi.get_port() != Some(found_port.clone()) {
-                                midi.set_port(found_port.clone());
-                            }
+                    if let Some(found_port) = ports.iter().find(|p| p.name == selected_port_name) {
+                        if midi.get_port() != Some(found_port.clone()) {
+                            midi.set_port(found_port.clone());
                         }
-                    } else {
-                        ui.label("No midi ports detected");
                     }
-                    ui.add_space(10.0);
+                } else {
+                    ui.label("No midi ports detected");
+                }
+                ui.add_space(10.0);
 
-                    ui.label("Notes");
-                    for (index, current_note) in
-                        &mut settings.midi.tombola_notes.iter_mut().enumerate()
-                    {
-                        egui::ComboBox::from_id_salt(index)
-                            .selected_text(current_note.to_string())
-                            .show_ui(ui, |ui| {
-                                for note in midi::Note::iter() {
-                                    ui.selectable_value(current_note, note, note.to_string());
-                                }
-                            });
-                    }
-                    ui.add_space(10.0);
+                ui.label("Notes");
+                for (index, current_note) in &mut settings.midi.tombola_notes.iter_mut().enumerate()
+                {
+                    egui::ComboBox::from_id_salt(index)
+                        .selected_text(current_note.to_string())
+                        .show_ui(ui, |ui| {
+                            for note in midi::Note::iter() {
+                                ui.selectable_value(current_note, note, note.to_string());
+                            }
+                        });
+                }
+                ui.add_space(10.0);
 
-                    ui.checkbox(
-                        &mut settings.midi.fixed_note_velocity.enabled,
-                        "Fixed Note Velocity",
-                    );
-                    if settings.midi.fixed_note_velocity.enabled {
-                        ui.add(egui::Slider::new(
-                            &mut settings.midi.fixed_note_velocity.value,
-                            0..=127,
-                        ));
-                    }
+                ui.checkbox(
+                    &mut settings.midi.fixed_note_velocity.enabled,
+                    "Fixed Note Velocity",
+                );
+                if settings.midi.fixed_note_velocity.enabled {
+                    ui.add(egui::Slider::new(
+                        &mut settings.midi.fixed_note_velocity.value,
+                        0..=127,
+                    ));
+                }
 
-                    ui.checkbox(
-                        &mut settings.midi.fixed_note_length.enabled,
-                        "Fixed Note Length",
-                    );
-                    if settings.midi.fixed_note_length.enabled {
-                        ui.add(
-                            egui::Slider::new(
-                                &mut settings.midi.fixed_note_length.value,
-                                10..=1000,
-                            )
+                ui.checkbox(
+                    &mut settings.midi.fixed_note_length.enabled,
+                    "Fixed Note Length",
+                );
+                if settings.midi.fixed_note_length.enabled {
+                    ui.add(
+                        egui::Slider::new(&mut settings.midi.fixed_note_length.value, 10..=1000)
                             .suffix("ms"),
-                        );
-                    }
-                });
+                    );
+                }
             });
+        });
 
-        return egui.ctx_mut().is_pointer_over_area();
-    }
-
-    false
+    return Ok(egui.ctx_mut()?.is_pointer_over_egui());
 }

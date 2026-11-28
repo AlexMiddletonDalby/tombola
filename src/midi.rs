@@ -29,7 +29,7 @@ const B3: u8 = 0x47;
 pub struct MidiPlugin;
 impl Plugin for MidiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_event::<MidiOutputEvent>();
+        app.add_message::<MidiOutputEvent>();
         app.add_systems(
             Startup,
             (
@@ -181,7 +181,7 @@ fn update_connection(mut midi: ResMut<Midi>) {
 
 fn terminate_midi_thread_if_app_exiting(
     mut midi: ResMut<Midi>,
-    mut exit_events: EventReader<AppExit>,
+    mut exit_events: MessageReader<AppExit>,
 ) {
     for _ in exit_events.read() {
         let _ = midi.tx.send(Action::SendMidiPanicEvent);
@@ -261,7 +261,7 @@ impl Note {
     }
 }
 
-#[derive(Event, Clone)]
+#[derive(Message, Clone)]
 pub enum MidiOutputEvent {
     NoteOn {
         note: Note,
@@ -274,7 +274,7 @@ pub enum MidiOutputEvent {
     },
 }
 
-fn process_output_events(mut events: EventReader<MidiOutputEvent>, midi: ResMut<Midi>) {
+fn process_output_events(mut events: MessageReader<MidiOutputEvent>, midi: ResMut<Midi>) {
     for event in events.read() {
         let _ = midi.tx.send(Action::SendMidiOutputEvent(event.clone()));
     }

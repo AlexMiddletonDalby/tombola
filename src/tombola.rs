@@ -4,9 +4,8 @@ use crate::midi;
 use crate::midi::{MidiOutputEvent, Note};
 use crate::pad::{Pad, PadBundle};
 use crate::settings::Settings;
-use avian2d::math::PI;
 use avian2d::prelude::{
-    AngularVelocity, CollisionEventsEnabled, LinearVelocity, OnCollisionStart, RigidBody,
+    AngularVelocity, CollisionEventsEnabled, CollisionStart, LinearVelocity, RigidBody,
 };
 use bevy::math::ops::tan;
 use bevy::prelude::*;
@@ -47,7 +46,7 @@ fn spawn_tombola(
     const THICKNESS: f32 = 5.0;
     const APOTHEM: f32 = 225.0;
 
-    let side_length = 2.0 * APOTHEM * tan(PI / shape.get_num_sides() as f32);
+    let side_length = 2.0 * APOTHEM * tan(core::f32::consts::PI / shape.get_num_sides() as f32);
     let size = Vec2::new(side_length, THICKNESS);
     let position = Vec2::new(0.0, 0.0);
 
@@ -81,15 +80,15 @@ fn spawn_tombola(
 }
 
 fn on_pad_collision(
-    trigger: Trigger<OnCollisionStart>,
+    event: On<CollisionStart>,
     mut pads: Query<&mut Pad>,
     mut balls: Query<(&mut Ball, &LinearVelocity)>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     settings: Res<Settings>,
-    mut midi: EventWriter<MidiOutputEvent>,
+    mut midi: MessageWriter<MidiOutputEvent>,
 ) {
-    let target = trigger.target();
-    let collider = trigger.collider;
+    let target = event.collider1;
+    let collider = event.collider2;
 
     if let Ok(mut pad) = pads.get_mut(target) {
         if let Ok((mut ball, velocity)) = balls.get_mut(collider) {
@@ -122,7 +121,7 @@ fn on_pad_collision(
                 ),
             );
 
-            if let Some(material) = materials.get_mut(pad.material.0.id()) {
+            if let Some(mut material) = materials.get_mut(pad.material.0.id()) {
                 material.color = Pad::hit_color();
             }
 
@@ -199,7 +198,7 @@ fn fade_pads(
     let amount = FADE_SPEED * time.delta_secs();
 
     for pad in pads.iter_mut() {
-        if let Some(material) = materials.get_mut(pad.material.0.id()) {
+        if let Some(mut material) = materials.get_mut(pad.material.0.id()) {
             material.color = material.color.mix(&Pad::default_color(), amount);
         }
     }
@@ -208,7 +207,7 @@ fn fade_pads(
 fn note_off_pads(
     mut pads: Query<&mut Pad>,
     time: Res<Time>,
-    mut midi: EventWriter<MidiOutputEvent>,
+    mut midi: MessageWriter<MidiOutputEvent>,
 ) {
     for mut pad in pads.iter_mut() {
         let note = pad.note.clone();
